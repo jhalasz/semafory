@@ -70,10 +70,14 @@ export function createConnectionEditor(scene,host,tolerancePercent=1.2){
    if(p.decision==="rejected")rejected++;
    const selectedHere=selected===p.id;
    const color=selectedHere?"#ffffff":p.decision==="accepted"?"#22c55e":p.decision==="rejected"?"#64748b":p.status==="missing"?"#ef4444":p.status==="ambiguous"?"#eab308":"#f97316";
+   const anchor=p.r.p;
+   const side=p.id%2===0?1:-1;
+   const badge={x:anchor.x+side*42,y:anchor.y-32};
+   make("line",{x1:anchor.x,y1:anchor.y,x2:badge.x,y2:badge.y,stroke:color,"stroke-width":1.5,"stroke-dasharray":"3 3","vector-effect":"non-scaling-stroke","pointer-events":"none"},overlay);
    const marker=make("g",{cursor:"pointer",opacity:selected!==null&&!selectedHere?".3":"1",role:"button",tabindex:"0","aria-label":"Vybrat spoj "+p.id},overlay);
-   make("circle",{cx:p.r.p.x,cy:p.r.p.y,r:selectedHere?14:11,fill:selectedHere?"#2563eb":"#142437",stroke:color,"stroke-width":selectedHere?3:2,"vector-effect":"non-scaling-stroke"},marker);
-   const digit=make("text",{x:p.r.p.x,y:p.r.p.y+3.5,"font-size":10,fill:"#fff","text-anchor":"middle","font-weight":"bold","pointer-events":"none"},marker);digit.textContent=String(p.id);
-   make("circle",{cx:p.r.p.x,cy:p.r.p.y,r:17,fill:"transparent"},marker);
+   make("circle",{cx:badge.x,cy:badge.y,r:selectedHere?13:11,fill:selectedHere?"#2563eb":"#142437",stroke:color,"stroke-width":selectedHere?3:2,"vector-effect":"non-scaling-stroke"},marker);
+   const digit=make("text",{x:badge.x,y:badge.y+3.5,"font-size":10,fill:"#fff","text-anchor":"middle","font-weight":"bold","pointer-events":"none"},marker);digit.textContent=String(p.id);
+   make("circle",{cx:badge.x,cy:badge.y,r:17,fill:"transparent"},marker);
    marker.addEventListener("click",()=>selectConnection(p));marker.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();selectConnection(p);}});
    if(p.best&&p.decision!=="rejected"){
     // Smooth cubic bridge: tangents point away from each joined endpoint;
@@ -81,7 +85,7 @@ export function createConnectionEditor(scene,host,tolerancePercent=1.2){
     const a=p.r.p,b=p.best.l.p,delta=dist(a,b),h=Math.min(delta*.4,12);
     const ra=p.r.out,lb=p.best.l.out;
     const path="M "+a.x+" "+a.y+" C "+(a.x+ra.x*h)+" "+(a.y+ra.y*h)+" "+(b.x+lb.x*h)+" "+(b.y+lb.y*h)+" "+b.x+" "+b.y;
-    make("path",{d:path,fill:"none",stroke:color,"stroke-width":2.5,"stroke-dasharray":p.decision==="accepted"?"none":"4 4","vector-effect":"non-scaling-stroke"},overlay);
+    make("path",{d:path,fill:"none",stroke:selectedHere?"#00ff88":color,"stroke-width":selectedHere?6:3,"stroke-dasharray":p.decision==="accepted"?"none":"4 4","vector-effect":"non-scaling-stroke"},overlay);
    }
 
    const item=document.createElement("div");item.className="connection-item"+(selectedHere?" selected":"");item.dataset.id=String(p.id);
