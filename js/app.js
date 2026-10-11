@@ -1,4 +1,4 @@
-import {inspectConnections} from "./connections.js?v=1.2.1";
+import {createConnectionEditor} from "./connection-editor.js?v=1.3";\nlet connections=null;
 const ns="http://www.w3.org/2000/svg";
 const keys=[["photo","Původní fotomapa","#64748b"],["beautified","Upravená mapa","#39a78e"],["markings","Vodorovné značení","#fff"],["lanes","Logické jízdní pruhy","#61cbf4"],["routes","Trajektorie","#ffc000"],["entry","Řídicí hranice","#7030a0"],["signals","Semafory","#00b050"],["other","Ostatní objekty","#aaa"]];
 const scene=document.getElementById("scene"),ph=document.getElementById("placeholder"),status=document.getElementById("status"),note=document.getElementById("diagnostic"),input=document.getElementById("photo");
@@ -14,7 +14,7 @@ for(const [key,label,color] of keys){
  opacity.oninput=()=>el(key).setAttribute("opacity",opacity.value/100);
  row.append(check,chip,name,opacity);document.getElementById("layers").append(row);
 }
-function clear(){for(const [k] of keys)el(k).replaceChildren();document.getElementById("import-defs").replaceChildren();document.getElementById("connections-layer").replaceChildren();document.getElementById("connection-report").textContent="Nahraj SVG pro kontrolu napojení.";}
+function clear(){if(connections){connections.dispose();connections=null;}document.getElementById("export-connections").disabled=true;for(const [k] of keys)el(k).replaceChildren();document.getElementById("import-defs").replaceChildren();document.getElementById("connections-layer").replaceChildren();document.getElementById("connection-report").textContent="Nahraj SVG pro kontrolu napojení.";}
 function color(e){const style=e.getAttribute("style")||"";const stroke=e.getAttribute("stroke")||(style.match(/stroke:\s*([^;]+)/)||[])[1];const fill=e.getAttribute("fill")||(style.match(/fill:\s*([^;]+)/)||[])[1];return (stroke&&stroke!=="none"?stroke:fill||"").toLowerCase();}
 function category(e){
  if(e.localName==="image"||e.localName==="use"||e.localName==="rect")return "photo";
@@ -69,3 +69,4 @@ input.onchange=async()=>{
 document.getElementById("reset").onclick=()=>{clear();input.value="";if(fileUrl)URL.revokeObjectURL(fileUrl);fileUrl=null;ph.setAttribute("visibility","visible");status.textContent="Čeká na podklad";note.textContent="";};
 
 document.getElementById("show-connections").addEventListener("change",e=>document.getElementById("connections-layer").setAttribute("visibility",e.target.checked?"visible":"hidden"));
+\ndocument.getElementById("export-connections").addEventListener("click",()=>{if(!connections)return;const data={format:"semafory-connections-1.0",source:status.textContent,connections:connections.export()};const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download="semafory-spoje.json";a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);});\n
