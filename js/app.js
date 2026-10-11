@@ -16,14 +16,15 @@ for(const [key,label,color] of keys){
 function clear(){for(const [k] of keys)el(k).replaceChildren();document.getElementById("import-defs").replaceChildren();}
 function color(e){const style=e.getAttribute("style")||"";const stroke=e.getAttribute("stroke")||(style.match(/stroke:\s*([^;]+)/)||[])[1];const fill=e.getAttribute("fill")||(style.match(/fill:\s*([^;]+)/)||[])[1];return (stroke&&stroke!=="none"?stroke:fill||"").toLowerCase();}
 function category(e){
- if(e.localName==="image")return "photo";
+ if(e.localName==="image"||e.localName==="use"||e.localName==="rect")return "photo";
  const c=color(e);
+ if(color(e).toLowerCase()==="#042433" && (e.getAttribute("fill")||"").toLowerCase()==="#00b050")return "signals";
  if(["#ffffff","#fff"].includes(c))return "markings";
  if(["#61cbf4","#37b5ed"].includes(c))return "lanes";
  if(["#ffc000","#f59e0b"].includes(c))return "routes";
  if(["#7030a0","#a855f7"].includes(c))return "entry";
  if(["#00b050","#22c55e"].includes(c))return "signals";
- return "other";
+ return "photo";
 }
 function svgImport(xml,name){
  const doc=new DOMParser().parseFromString(xml,"image/svg+xml");
@@ -37,7 +38,7 @@ function svgImport(xml,name){
  const nums=vb?vb.split(/[\s,]+/).map(Number):[0,0,w,h];scene.style.aspectRatio=nums[2]+"/"+nums[3];
  const count={};const allowed=["path","image","rect","circle","ellipse","line","polyline","polygon","use","text"];
  function visit(node,parents){
-  if(node.localName==="defs")return;
+  if(node.localName==="defs"||node.localName==="clipPath")return;
   if(node.localName==="g"){for(const child of node.children)visit(child,[...parents,node]);return;}
   if(!allowed.includes(node.localName))return;
   const k=category(node);count[k]=(count[k]||0)+1;let dest=el(k);
