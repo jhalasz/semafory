@@ -50,8 +50,8 @@ function svgImport(xml,name){
  for(const child of root.children)visit(child,[]);
  ph.setAttribute("visibility","hidden");status.textContent=name;
  note.textContent="Import dokončen. "+keys.map(([k,n])=>n+": "+(count[k]||0)).join("; ");
- const result=inspectConnections(scene);
- document.getElementById("connection-report").textContent="Koncové body modrých pruhů: "+result.lanes+" · oranžových tras: "+result.routes+" · přesně spojeno: "+result.connected+" · drobné mezery: "+result.gaps+" · nejednoznačné: "+result.ambiguous+" · nenalezená návaznost: "+result.missing+". Tolerance "+result.tolerance.toFixed(1)+" jednotek SVG (orientační). Zatím se nic automaticky neupravuje.";
+ connections=createConnectionEditor(scene,document.getElementById("connection-list"));
+ document.getElementById("export-connections").disabled=false;
 }
 input.onchange=async()=>{
  const f=input.files[0];if(!f)return;
@@ -70,4 +70,5 @@ input.onchange=async()=>{
 document.getElementById("reset").onclick=()=>{clear();input.value="";if(fileUrl)URL.revokeObjectURL(fileUrl);fileUrl=null;ph.setAttribute("visibility","visible");status.textContent="Čeká na podklad";note.textContent="";};
 
 document.getElementById("show-connections").addEventListener("change",e=>document.getElementById("connections-layer").setAttribute("visibility",e.target.checked?"visible":"hidden"));
-\ndocument.getElementById("export-connections").addEventListener("click",()=>{if(!connections)return;const data={format:"semafory-connections-1.0",source:status.textContent,connections:connections.export()};const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download="semafory-spoje.json";a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);});\n
+
+document.getElementById("export-connections").addEventListener("click",()=>{if(!connections)return;const data={format:"semafory-connections-1.0",source:status.textContent,connections:connections.export()};const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download="semafory-spoje.json";a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);});
