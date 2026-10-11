@@ -1,4 +1,4 @@
-import {createConnectionEditor} from "./connection-editor.js?v=1.3.2";
+import {createConnectionEditor} from "./connection-editor.js?v=1.3.3";
 let connections=null;
 const ns="http://www.w3.org/2000/svg";
 const keys=[["photo","Původní fotomapa","#64748b"],["beautified","Upravená mapa","#39a78e"],["markings","Vodorovné značení","#fff"],["lanes","Logické jízdní pruhy","#61cbf4"],["routes","Trajektorie","#ffc000"],["entry","Řídicí hranice","#7030a0"],["signals","Semafory","#00b050"],["other","Ostatní objekty","#aaa"]];
@@ -50,11 +50,18 @@ function svgImport(xml,name){
  for(const child of root.children)visit(child,[]);
  ph.setAttribute("visibility","hidden");status.textContent=name;
  note.textContent="Import dokončen. "+keys.map(([k,n])=>n+": "+(count[k]||0)).join("; ");
- connections=createConnectionEditor(scene,document.getElementById("connection-list"));
- document.getElementById("export-connections").disabled=false;
+ try{
+  connections=createConnectionEditor(scene,document.getElementById("connection-list"));
+  document.getElementById("export-connections").disabled=false;
+ }catch(error){
+  document.getElementById("connection-report").textContent="SVG bylo zobrazeno, ale diagnostika návazností selhala: "+error.message;
+  console.error("Chyba diagnostiky",error);
+ }
 }
 input.onchange=async()=>{
- const f=input.files[0];if(!f)return;
+ const f=input.files[0];input.value="";if(!f)return;
+ status.textContent="Načítám: "+f.name;
+ note.textContent="Probíhá import souboru…";
  try{
   if(f.name.toLowerCase().endsWith(".svg"))svgImport(await f.text(),f.name);
   else{
@@ -65,7 +72,7 @@ input.onchange=async()=>{
    const e=document.createElementNS(ns,"image");e.setAttribute("href",url);e.setAttribute("width",img.naturalWidth);e.setAttribute("height",img.naturalHeight);el("photo").append(e);
    ph.setAttribute("visibility","hidden");status.textContent=f.name;note.textContent="Fotomapa načtena.";
   }
- }catch(e){status.textContent="Chyba importu";note.textContent=e.message;}
+ }catch(e){status.textContent="Chyba importu";note.textContent="Import se nezdařil: "+e.message;console.error("Chyba importu SVG",e);}
 };
 document.getElementById("reset").onclick=()=>{clear();input.value="";if(fileUrl)URL.revokeObjectURL(fileUrl);fileUrl=null;ph.setAttribute("visibility","visible");status.textContent="Čeká na podklad";note.textContent="";};
 
