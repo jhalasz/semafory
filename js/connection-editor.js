@@ -56,6 +56,8 @@ export function createConnectionEditor(scene,host,tolerancePercent=1.2){
  function selectConnection(p){selected=p.id;const v=originalViewBox.trim().split(/\s+/).map(Number);const w=v[2]/3.5,h=v[3]/3.5;const pos=p.best?{x:(p.r.p.x+p.best.l.p.x)/2,y:(p.r.p.y+p.best.l.p.y)/2}:p.r.p;scene.setAttribute("viewBox",[pos.x-w/2,pos.y-h/2,w,h].join(" "));zoomButton.disabled=false;redraw();const row=list.querySelector("[data-id=\u0027"+p.id+"\u0027]");if(row)row.scrollIntoView({block:"nearest"});}
  const resetZoom=()=>{scene.setAttribute("viewBox",originalViewBox);scene.style.aspectRatio=originalAspect;selected=null;zoomButton.disabled=true;redraw();};
  zoomButton.addEventListener("click",resetZoom);
+ const onDirection=()=>{resetZoom();overlay.setAttribute("visibility","hidden");document.getElementById("show-connections").checked=false;};
+ scene.addEventListener("semafory:direction-selected",onDirection);
  zoomButton.disabled=true;
  function redraw(){
   const savedScroll=list.scrollTop;
@@ -111,6 +113,6 @@ export function createConnectionEditor(scene,host,tolerancePercent=1.2){
     from:p.r.p,to:p.best.l.p,distance:p.best.d,angleDegrees:p.best.a
    }));
   },
-  dispose(){zoomButton.removeEventListener("click",resetZoom);zoomButton.disabled=true;scene.setAttribute("viewBox",originalViewBox);scene.style.aspectRatio=originalAspect;overlay.replaceChildren();host.replaceChildren();}
+  dispose(){scene.removeEventListener("semafory:direction-selected",onDirection);zoomButton.removeEventListener("click",resetZoom);zoomButton.disabled=true;scene.setAttribute("viewBox",originalViewBox);scene.style.aspectRatio=originalAspect;overlay.replaceChildren();host.replaceChildren();}
  };
 }
