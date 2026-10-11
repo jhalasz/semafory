@@ -53,7 +53,7 @@ export function createConnectionEditor(scene,host,tolerancePercent=1.2){
  const zoomButton=document.getElementById("reset-connection-zoom");
  const originalViewBox=scene.getAttribute("viewBox");
  const originalAspect=scene.style.aspectRatio;
- function selectConnection(p){selected=p.id;const v=originalViewBox.split(/[\\s,]+/).map(Number);const w=v[2]/3.5,h=v[3]/3.5;const pos=p.best?{x:(p.r.p.x+p.best.l.p.x)/2,y:(p.r.p.y+p.best.l.p.y)/2}:p.r.p;scene.setAttribute("viewBox",[pos.x-w/2,pos.y-h/2,w,h].join(" "));zoomButton.disabled=false;redraw();const row=list.querySelector("[data-id=\u0027"+p.id+"\u0027]");if(row)row.scrollIntoView({block:"nearest"});}
+ function selectConnection(p){selected=p.id;const v=originalViewBox.trim().split(/\s+/).map(Number);const w=v[2]/3.5,h=v[3]/3.5;const pos=p.best?{x:(p.r.p.x+p.best.l.p.x)/2,y:(p.r.p.y+p.best.l.p.y)/2}:p.r.p;scene.setAttribute("viewBox",[pos.x-w/2,pos.y-h/2,w,h].join(" "));zoomButton.disabled=false;redraw();const row=list.querySelector("[data-id=\u0027"+p.id+"\u0027]");if(row)row.scrollIntoView({block:"nearest"});}
  const resetZoom=()=>{scene.setAttribute("viewBox",originalViewBox);scene.style.aspectRatio=originalAspect;selected=null;zoomButton.disabled=true;redraw();};
  zoomButton.addEventListener("click",resetZoom);
  zoomButton.disabled=true;
