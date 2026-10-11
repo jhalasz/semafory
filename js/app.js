@@ -1,66 +1,65 @@
-// Vizuální editor pouze spravuje vrstvy. Dopravní pravidla a simulace sem nepatří.
-const layers = [
-  {id:"photo-layer", label:"Původní fotomapa", color:"#64748b"},
-  {id:"beautified-layer", label:"Upravená mapa", color:"#39a78e"},
-  {id:"markings-layer", label:"Vodorovné značení", color:"#ffffff"},
-  {id:"lanes-layer", label:"Logické jízdní pruhy", color:"#37b5ed"},
-  {id:"routes-layer", label:"Trajektorie", color:"#f59e0b"},
-  {id:"entry-layer", label:"Řídicí hranice", color:"#a855f7"},
-  {id:"signals-layer", label:"Semafory", color:"#22c55e"}
-];
-const svg = document.getElementById("scene");
-const photo = document.getElementById("photo-layer");
-const placeholder = document.getElementById("placeholder");
-const status = document.getElementById("status");
-const root = document.getElementById("layers");
-let imageUrl = null;
-for (const layer of layers) {
-  const g = document.getElementById(layer.id);
-  const wrap = document.createElement("div");
-  wrap.className = "layer";
-  const cb = document.createElement("input");
-  cb.type = "checkbox"; cb.checked = true; cb.id = "show-"+layer.id;
-  cb.addEventListener("change", () => g.setAttribute("visibility", cb.checked ? "visible":"hidden"));
-  const swatch = document.createElement("span");
-  swatch.className = "swatch"; swatch.style.background = layer.color;
-  const label = document.createElement("label");
-  label.htmlFor = cb.id; label.textContent = layer.label;
-  const alpha = document.createElement("input");
-  alpha.type = "range"; alpha.min="0"; alpha.max="100"; alpha.value="100";
-  alpha.setAttribute("aria-label", "Průhlednost: "+layer.label);
-  alpha.addEventListener("input", () => g.setAttribute("opacity", String(Number(alpha.value)/100)));
-  wrap.append(cb, swatch, label, alpha); root.append(wrap);
+const ns="http://www.w3.org/2000/svg";
+const keys=[["photo","Původní fotomapa","#64748b"],["beautified","Upravená mapa","#39a78e"],["markings","Vodorovné značení","#fff"],["lanes","Logické jízdní pruhy","#61cbf4"],["routes","Trajektorie","#ffc000"],["entry","Řídicí hranice","#7030a0"],["signals","Semafory","#00b050"],["other","Ostatní objekty","#aaa"]];
+const scene=document.getElementById("scene"),ph=document.getElementById("placeholder"),status=document.getElementById("status"),note=document.getElementById("diagnostic"),input=document.getElementById("photo");
+const el=k=>document.getElementById(k+"-layer");
+let fileUrl=null;
+for(const [key,label,color] of keys){
+ const row=document.createElement("div");row.className="layer";
+ const check=document.createElement("input");check.type="checkbox";check.checked=true;
+ check.onchange=()=>el(key).setAttribute("visibility",check.checked?"visible":"hidden");
+ const chip=document.createElement("span");chip.className="swatch";chip.style.background=color;
+ const name=document.createElement("label");name.textContent=label;
+ const opacity=document.createElement("input");opacity.type="range";opacity.min=0;opacity.max=100;opacity.value=100;
+ opacity.oninput=()=>el(key).setAttribute("opacity",opacity.value/100);
+ row.append(check,chip,name,opacity);document.getElementById("layers").append(row);
 }
-document.getElementById("photo").addEventListener("change", async event => {
-  const file = event.target.files?.[0];
-  if (!file || !file.type.startsWith("image/")) return;
-  const nextUrl = URL.createObjectURL(file);
-  const img = new Image();
-  try {
-    await new Promise((resolve,reject) => { img.onload=resolve; img.onerror=reject; img.src=nextUrl; });
-    if (imageUrl) URL.revokeObjectURL(imageUrl);
-    imageUrl=nextUrl;
-    const w=img.naturalWidth, h=img.naturalHeight;
-    svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
-    svg.style.aspectRatio=`${w}/${h}`;
-    photo.setAttribute("width", String(w));
-    photo.setAttribute("height", String(h));
-    photo.setAttribute("href", imageUrl);
-    photo.setAttribute("visibility",document.getElementById("show-photo-layer").checked?"visible":"hidden");
-    placeholder.setAttribute("visibility","hidden");
-    status.textContent=`${file.name} (${w} × ${h})`;
-  } catch {
-    URL.revokeObjectURL(nextUrl);
-    status.textContent="Soubor obrázku se nepodařilo načíst.";
+function clear(){for(const [k] of keys)el(k).replaceChildren();document.getElementById("import-defs").replaceChildren();}
+function color(e){const style=e.getAttribute("style")||"";const stroke=e.getAttribute("stroke")||(style.match(/stroke:\s*([^;]+)/)||[])[1];const fill=e.getAttribute("fill")||(style.match(/fill:\s*([^;]+)/)||[])[1];return (stroke&&stroke!=="none"?stroke:fill||"").toLowerCase();}
+function category(e){
+ if(e.localName==="image")return "photo";
+ const c=color(e);
+ if(["#ffffff","#fff"].includes(c))return "markings";
+ if(["#61cbf4","#37b5ed"].includes(c))return "lanes";
+ if(["#ffc000","#f59e0b"].includes(c))return "routes";
+ if(["#7030a0","#a855f7"].includes(c))return "entry";
+ if(["#00b050","#22c55e"].includes(c))return "signals";
+ return "other";
+}
+function svgImport(xml,name){
+ const doc=new DOMParser().parseFromString(xml,"image/svg+xml");
+ if(doc.querySelector("parsererror")||doc.documentElement.localName!=="svg")throw Error("Neplatné SVG");
+ const root=doc.documentElement;clear();
+ for(const bad of root.querySelectorAll("script,foreignObject,animate,set"))bad.remove();
+ for(const node of root.querySelectorAll("*"))for(const a of [...node.attributes])if(a.name.startsWith("on"))node.removeAttribute(a.name);
+ const defs=root.querySelector("defs");if(defs)for(const child of defs.children)document.getElementById("import-defs").append(document.importNode(child,true));
+ const vb=root.getAttribute("viewBox");const w=parseFloat(root.getAttribute("width"))||1280,h=parseFloat(root.getAttribute("height"))||720;
+ scene.setAttribute("viewBox",vb||"0 0 "+w+" "+h);
+ const nums=vb?vb.split(/[\s,]+/).map(Number):[0,0,w,h];scene.style.aspectRatio=nums[2]+"/"+nums[3];
+ const count={};const allowed=["path","image","rect","circle","ellipse","line","polyline","polygon","use","text"];
+ function visit(node,parents){
+  if(node.localName==="defs")return;
+  if(node.localName==="g"){for(const child of node.children)visit(child,[...parents,node]);return;}
+  if(!allowed.includes(node.localName))return;
+  const k=category(node);count[k]=(count[k]||0)+1;let dest=el(k);
+  for(const p of parents){const g=document.createElementNS(ns,"g");for(const a of p.attributes)if(["transform","opacity","clip-path"].includes(a.name))g.setAttribute(a.name,a.value);dest.append(g);dest=g;}
+  dest.append(document.importNode(node,true));
+ }
+ for(const child of root.children)visit(child,[]);
+ ph.setAttribute("visibility","hidden");status.textContent=name;
+ note.textContent="Import dokončen. "+keys.map(([k,n])=>n+": "+(count[k]||0)).join("; ")+". Návaznost trajektorií se zatím netestuje.";
+}
+input.onchange=async()=>{
+ const f=input.files[0];if(!f)return;
+ try{
+  if(f.name.toLowerCase().endsWith(".svg"))svgImport(await f.text(),f.name);
+  else{
+   const url=URL.createObjectURL(f),img=new Image();
+   await new Promise((ok,no)=>{img.onload=ok;img.onerror=no;img.src=url;});
+   if(fileUrl)URL.revokeObjectURL(fileUrl);fileUrl=url;clear();
+   scene.setAttribute("viewBox","0 0 "+img.naturalWidth+" "+img.naturalHeight);scene.style.aspectRatio=img.naturalWidth+"/"+img.naturalHeight;
+   const e=document.createElementNS(ns,"image");e.setAttribute("href",url);e.setAttribute("width",img.naturalWidth);e.setAttribute("height",img.naturalHeight);el("photo").append(e);
+   ph.setAttribute("visibility","hidden");status.textContent=f.name;note.textContent="Fotomapa načtena.";
   }
-});
-document.getElementById("reset").addEventListener("click", () => {
-  if(imageUrl) URL.revokeObjectURL(imageUrl);
-  imageUrl=null;
-  photo.removeAttribute("href"); photo.setAttribute("visibility","hidden");
-  placeholder.setAttribute("visibility","visible");
-  svg.setAttribute("viewBox","0 0 1000 700");
-  svg.style.aspectRatio="10/7";
-  document.getElementById("photo").value="";
-  status.textContent="Čeká na fotomapu";
-});
+ }catch(e){status.textContent="Chyba importu";note.textContent=e.message;}
+};
+document.getElementById("reset").onclick=()=>{clear();input.value="";if(fileUrl)URL.revokeObjectURL(fileUrl);fileUrl=null;ph.setAttribute("visibility","visible");status.textContent="Čeká na podklad";note.textContent="";};
