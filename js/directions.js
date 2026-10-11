@@ -33,6 +33,16 @@ export function createDirectionEditor(svg,container){
  head.textContent="Směry jsou pouze geometrické návrhy; skutečný směr musí být ověřen podle komunikace a dopravního značení. Klikni na řádek nebo šipku a směr potvrď.";container.append(head);
  const list=document.createElement("div");list.className="direction-list";container.append(list);
  let selected=null;
+ const baseView=svg.getAttribute("viewBox");
+ function selectItem(item){
+  selected=item.id;
+  svg.dispatchEvent(new CustomEvent("semafory:direction-selected"));
+  const bounds=baseView.trim().split(/[\\s,]+/).map(Number);
+  const center={x:(item.start.x+item.end.x)/2,y:(item.start.y+item.end.y)/2};
+  const w=bounds[2]/2.1,h=bounds[3]/2.1;
+  svg.setAttribute("viewBox",[center.x-w/2,center.y-h/2,w,h].join(" "));
+  render();
+ }
  function render(){
   layer.replaceChildren();list.replaceChildren();
   for(const item of all){
@@ -45,12 +55,19 @@ export function createDirectionEditor(svg,container){
    const marker=shape("g",{cursor:"pointer",role:"button",tabindex:0,"aria-label":"Vybrat "+item.id},layer);
    const p=shape("path",{d:"M "+(mid.x-ux*11)+" "+(mid.y-uy*11)+" L "+(mid.x+ux*11)+" "+(mid.y+uy*11)+" M "+(mid.x+ux*11)+" "+(mid.y+uy*11)+" L "+(mid.x+ux*4-uy*5)+" "+(mid.y+uy*4+ux*5)+" M "+(mid.x+ux*11)+" "+(mid.y+uy*11)+" L "+(mid.x+ux*4+uy*5)+" "+(mid.y+uy*4-ux*5),fill:"none",stroke:color,"stroke-width":selected===item.id?5:3,"vector-effect":"non-scaling-stroke"},marker);
    shape("circle",{cx:mid.x,cy:mid.y,r:16,fill:"transparent"},marker);
-   const choose=()=>{selected=item.id;render();};
+   const badge=shape("g",{cursor:"pointer"},layer);
+   const bx=mid.x+25,by=mid.y-24;
+   shape("line",{x1:mid.x,y1:mid.y,x2:bx,y2:by,stroke:color,"stroke-width":1.5,"stroke-dasharray":"3 3","pointer-events":"none"},badge);
+   shape("circle",{cx:bx,cy:by,r:14,fill:"#172338",stroke:color,"stroke-width":selected===item.id?3:2},badge);
+   const tag=shape("text",{x:bx,y:by+4,"text-anchor":"middle","font-size":10,"font-weight":"bold",fill:"#ffffff","pointer-events":"none"},badge);tag.textContent=item.id;
+   shape("circle",{cx:bx,cy:by,r:18,fill:"transparent"},badge);
+   const choose=()=>selectItem(item);
+   badge.addEventListener("click",choose);
    marker.addEventListener("click",choose);marker.addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();choose();}});
    const row=document.createElement("div");row.className="direction-item"+(selected===item.id?" selected":"");
    const title=document.createElement("button");title.textContent=item.id+" · "+(item.confirmed?"potvrzeno":item.direction===0?"směr neurčen":"návrh směru");
    title.type="button";title.addEventListener("click",choose);row.append(title);
-   const flip=document.createElement("button");flip.type="button";flip.textContent="Obrátit";flip.addEventListener("click",()=>{item.direction=item.direction===-1?1:-1;item.confirmed=false;selected=item.id;render();});
+   const flip=document.createElement("button");flip.type="button";flip.textContent="Obrátit";flip.addEventListener("click",()=>{item.direction=item.direction===-1?1:-1;item.confirmed=false;selectItem(item);});
    const confirm=document.createElement("button");confirm.type="button";confirm.textContent="Potvrdit";confirm.disabled=item.confirmed;confirm.addEventListener("click",()=>{item.direction=item.direction===-1?-1:1;item.confirmed=true;selected=item.id;render();});
    row.append(flip,confirm);list.append(row);
   }
