@@ -3,12 +3,12 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Semafory – Intersection Builder 1.3.1</title>
+  <title>Semafory – Intersection Builder 1.3.2</title>
   <link rel="stylesheet" href="./css/style.css">
-  <script type="module" src="./js/app.js?v=1.3.1"></script>
+  <script type="module" src="./js/app.js?v=1.3.2"></script>
 </head>
 <body>
-  <header><h1>Semafory <small>Intersection Builder 1.3.1</small></h1></header>
+  <header><h1>Semafory <small>Intersection Builder 1.3.2</small></h1></header>
   <main>
     <aside class="panel">
       <h2>Podklady</h2>
@@ -16,8 +16,8 @@
       <input id="photo" type="file" accept=".svg,image/svg+xml,image/png,image/jpeg,image/webp">
       <button id="reset" type="button">Odstranit fotomapu</button>
       <h2>Vrstvy</h2>
-      <div id="layers"></div><p id="diagnostic" class="help" role="status"></p><div class="layer"><input id="show-connections" type="checkbox" checked><label for="show-connections">Kontrola návazností</label></div><button id="export-connections" type="button" disabled>Export potvrzených spojů (JSON)</button><div id="connection-list"></div><p id="connection-report" class="help">Nahraj SVG pro kontrolu napojení.</p>
-      <p class="help">Podklad a všechny vektorové vrstvy sdílejí stejný souřadnicový systém. SVG z PowerPointu se načte do barevných vrstev. Návrhy spojů potvrď nebo odmítni. Zelené spoje jsou potvrzené, oranžové návrhy, žluté nejasné a červené bez kandidáta. Původní křivky se nemění.</p>
+      <div id="layers"></div><p id="diagnostic" class="help" role="status"></p><div class="layer"><input id="show-connections" type="checkbox" checked><label for="show-connections">Kontrola návazností</label></div><button id="reset-connection-zoom" type="button" disabled>Zobrazit celou křižovatku</button><button id="export-connections" type="button" disabled>Export potvrzených spojů (JSON)</button><div id="connection-list"></div><p id="connection-report" class="help">Nahraj SVG pro kontrolu napojení.</p>
+      <p class="help">Podklad a všechny vektorové vrstvy sdílejí stejný souřadnicový systém. SVG z PowerPointu se načte do barevných vrstev. Klikni na číslo bodu na mapě nebo jeho položku v seznamu; vybrané místo se přiblíží. Návrhy spojů potvrď nebo odmítni. Zelené spoje jsou potvrzené, oranžové návrhy, žluté nejasné a červené bez kandidáta. Původní křivky se nemění.</p>
     </aside>
     <section class="panel workspace">
       <div class="workspace-head"><h2>Náhled křižovatky</h2><span id="status">Čeká na podklad</span></div>
@@ -30,7 +30,7 @@
           <g id="routes-layer"></g>
           <g id="entry-layer"></g>
           <g id="signals-layer"></g>
-          <g id="other-layer"></g><g id="connections-layer" pointer-events="none"></g><text id="placeholder" x="500" y="350" text-anchor="middle">Nahrajte fotomapu v levém panelu</text>
+          <g id="other-layer"></g><g id="connections-layer"></g><text id="placeholder" x="500" y="350" text-anchor="middle">Nahrajte fotomapu v levém panelu</text>
         </svg>
       </div>
     </section>
