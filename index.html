@@ -5,10 +5,10 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Semafory – Intersection Builder 1.1</title>
   <link rel="stylesheet" href="./css/style.css">
-  <script type="module" src="./js/app.js"></script>
+  <script type="module" src="./js/app.js?v=1.1.2"></script>
 </head>
 <body>
-  <header><h1>Semafory <small>Intersection Builder 1.0</small></h1></header>
+  <header><h1>Semafory <small>Intersection Builder 1.1.2</small></h1></header>
   <main>
     <aside class="panel">
       <h2>Podklady</h2>
@@ -17,10 +17,10 @@
       <button id="reset" type="button">Odstranit fotomapu</button>
       <h2>Vrstvy</h2>
       <div id="layers"></div><p id="diagnostic" class="help" role="status"></p>
-      <p class="help">Podklad a všechny vektorové vrstvy sdílejí stejný souřadnicový systém. Zatím jde o první kontrolní prohlížeč vrstev; import PowerPointu a kreslení přidáme později.</p>
+      <p class="help">Podklad a všechny vektorové vrstvy sdílejí stejný souřadnicový systém. SVG z PowerPointu se načte do barevných vrstev. Kreslení a kontrolu návazností doplníme později.</p>
     </aside>
     <section class="panel workspace">
-      <div class="workspace-head"><h2>Náhled křižovatky</h2><span id="status">Čeká na fotomapu</span></div>
+      <div class="workspace-head"><h2>Náhled křižovatky</h2><span id="status">Čeká na podklad</span></div>
       <div class="viewport">
         <svg id="scene" viewBox="0 0 1000 700" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Pracovní plocha křižovatky">
           <g id="photo-layer"></g>
