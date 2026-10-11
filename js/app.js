@@ -1,5 +1,5 @@
-import {createDirectionEditor} from "./directions.js?v=1.4";
-import {createConnectionEditor} from "./connection-editor.js?v=1.4";
+import {createDirectionEditor} from "./directions.js?v=1.4.1";
+import {createConnectionEditor} from "./connection-editor.js?v=1.4.1";
 let connections=null,directions=null;
 const ns="http://www.w3.org/2000/svg";
 const keys=[["photo","Původní fotomapa","#64748b"],["beautified","Upravená mapa","#39a78e"],["markings","Vodorovné značení","#fff"],["lanes","Logické jízdní pruhy","#61cbf4"],["routes","Trajektorie","#ffc000"],["entry","Řídicí hranice","#7030a0"],["signals","Semafory","#00b050"],["other","Ostatní objekty","#aaa"]];
@@ -49,6 +49,17 @@ function svgImport(xml,name){
   dest.append(document.importNode(node,true));
  }
  for(const child of root.children)visit(child,[]);
+ // Fit the scene to the actual embedded photograph, not to an assumed SVG page.
+ // PowerPoint may export a slide-sized viewBox with content offset inside it.
+ try{
+  const photo=el("photo");
+  const box=photo.getBBox();
+  if(box.width>0&&box.height>0&&[box.x,box.y,box.width,box.height].every(Number.isFinite)){
+   const pad=Math.max(box.width,box.height)*.04;
+   scene.setAttribute("viewBox",[box.x-pad,box.y-pad,box.width+2*pad,box.height+2*pad].join(" "));
+   scene.style.aspectRatio=(box.width+2*pad)+"/"+(box.height+2*pad);
+  }
+ }catch(err){console.warn("Nelze vypočítat rozměry fotografie",err);}
  ph.setAttribute("visibility","hidden");status.textContent=name;
  note.textContent="Import dokončen. "+keys.map(([k,n])=>n+": "+(count[k]||0)).join("; ");
  try{
