@@ -1,4 +1,4 @@
-import {inspectConnections} from "./connections.js?v=1.2";
+import {inspectConnections} from "./connections.js?v=1.2.1";
 const ns="http://www.w3.org/2000/svg";
 const keys=[["photo","Původní fotomapa","#64748b"],["beautified","Upravená mapa","#39a78e"],["markings","Vodorovné značení","#fff"],["lanes","Logické jízdní pruhy","#61cbf4"],["routes","Trajektorie","#ffc000"],["entry","Řídicí hranice","#7030a0"],["signals","Semafory","#00b050"],["other","Ostatní objekty","#aaa"]];
 const scene=document.getElementById("scene"),ph=document.getElementById("placeholder"),status=document.getElementById("status"),note=document.getElementById("diagnostic"),input=document.getElementById("photo");
