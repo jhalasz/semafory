@@ -12,7 +12,7 @@ function endpoints(group,scene){
     p0={x:Number(el.getAttribute("x1")||0),y:Number(el.getAttribute("y1")||0)};
     p1={x:Number(el.getAttribute("x2")||0),y:Number(el.getAttribute("y2")||0)};
    }else continue;
-   const m=el.getCTM();if(!m)continue;
+   const root=scene.getScreenCTM();const local=el.getScreenCTM();if(!root||!local)continue;const m=root.inverse().multiply(local);
    for(const [side,p] of [["začátek",p0],["konec",p1]]){
     const q=new DOMPoint(p.x,p.y).matrixTransform(m);
     // getCTM is expressed in the root SVG user coordinates.
