@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Semafory – Intersection Builder 1.0</title>
+  <title>Semafory – Intersection Builder 1.1</title>
   <link rel="stylesheet" href="./css/style.css">
   <script type="module" src="./js/app.js"></script>
 </head>
@@ -12,11 +12,11 @@
   <main>
     <aside class="panel">
       <h2>Podklady</h2>
-      <label for="photo">Fotomapa (PNG/JPG)</label>
-      <input id="photo" type="file" accept="image/png,image/jpeg,image/webp">
+      <label for="photo">Fotomapa nebo SVG z PowerPointu</label>
+      <input id="photo" type="file" accept=".svg,image/svg+xml,image/png,image/jpeg,image/webp">
       <button id="reset" type="button">Odstranit fotomapu</button>
       <h2>Vrstvy</h2>
-      <div id="layers"></div>
+      <div id="layers"></div><p id="diagnostic" class="help" role="status"></p>
       <p class="help">Podklad a všechny vektorové vrstvy sdílejí stejný souřadnicový systém. Zatím jde o první kontrolní prohlížeč vrstev; import PowerPointu a kreslení přidáme později.</p>
     </aside>
     <section class="panel workspace">
@@ -24,13 +24,13 @@
       <div class="viewport">
         <svg id="scene" viewBox="0 0 1000 700" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Pracovní plocha křižovatky">
           <image id="photo-layer" width="1000" height="700" preserveAspectRatio="none" visibility="hidden"/>
-          <g id="beautified-layer"></g>
+          <defs id="import-defs"></defs><g id="beautified-layer"></g>
           <g id="markings-layer"></g>
           <g id="lanes-layer"></g>
           <g id="routes-layer"></g>
           <g id="entry-layer"></g>
           <g id="signals-layer"></g>
-          <text id="placeholder" x="500" y="350" text-anchor="middle">Nahrajte fotomapu v levém panelu</text>
+          <g id="other-layer"></g><text id="placeholder" x="500" y="350" text-anchor="middle">Nahrajte fotomapu v levém panelu</text>
         </svg>
       </div>
     </section>
