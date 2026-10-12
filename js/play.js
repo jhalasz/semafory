@@ -86,21 +86,48 @@ function samplePath(el,reverse=false){
  for(let i=0;i<=n;i++){const q=el.getPointAtLength(len*(reverse?1-i/n:i/n));const v=new DOMPoint(q.x,q.y).matrixTransform(matrix);p.push({x:v.x,y:v.y});}
  return p;
 }
-// Extend a short entry lane back to the visible map edge along its initial
-// tangent. The source project geometry is never modified.
-function extendEntryToBorder(points,mapEdgeX=264){
- if(points.length<3||points[0].x<=mapEdgeX+25)return points;
- const first=points[0],probe=points[Math.min(points.length-1,4)];
- const dx=probe.x-first.x,dy=probe.y-first.y;
- if(dx<=1)return points;
- const slope=dy/dx,extra=first.x-mapEdgeX;
- if(extra>300||Math.abs(slope)>0.8)return points;
- const prefix=[];
- for(let i=0;i<Math.ceil(extra/5);i++){
-  const x=mapEdgeX+extra*i/Math.ceil(extra/5);
-  prefix.push({x,y:first.y+(x-first.x)*slope});
- }
+// Road-network geometry is independent of individual turn movements.
+// A lane is sampled once, and any movement referring to it reuses the same
+// upstream segment. If its origin is inside the mapped road bounds, extend
+// that segment along its existing tangent to the border, not per movement.
+function roadBounds(parts){
+ const points=parts.lane.flatMap(el=>{
+  const n=el.getTotalLength();return[el.getPointAtLength(0),el.getPointAtLength(n)];
+ }).map(p=>({x:p.x,y:p.y}));
+ return {left:Math.min(...points.map(p=>p.x)),right:Math.max(...points.map(p=>p.x)),top:Math.min(...points.map(p=>p.y)),bottom:Math.max(...points.map(p=>p.y))};
+}
+function extendToRoadEdge(points,bounds){
+ if(points.length<3)return points;
+ const first=points[0],probe=points[Math.min(4,points.length-1)];
+ const dx=first.x-probe.x,dy=first.y-probe.y;
+ const hits=[];
+ if(dx<-0.5)hits.push((bounds.left-first.x)/dx);
+ if(dx>0.5)hits.push((bounds.right-first.x)/dx);
+ if(dy<-0.5)hits.push((bounds.top-first.y)/dy);
+ if(dy>0.5)hits.push((bounds.bottom-first.y)/dy);
+ const t=Math.min(...hits.filter(t=>t>0));
+ if(!Number.isFinite(t))return points;
+ const distance=Math.hypot(dx*t,dy*t);
+ if(distance<20||distance>280)return points;
+ const segments=Math.max(2,Math.ceil(distance/5)),prefix=[];
+ for(let i=0;i<segments;i++){const f=1-i/segments;prefix.push({x:first.x+dx*t*f,y:first.y+dy*t*f});}
  return prefix.concat(points);
+}
+function makeRoadNetwork(parts,directions){
+ const direction=new Map((directions?.items||[]).filter(d=>d.confirmed).map(d=>[d.id,d.direction]));
+ const bounds=roadBounds(parts),segments=new Map();
+ function segment(id,entry=false){
+  const key=id+(entry?":entry":"");
+  if(segments.has(key))return segments.get(key);
+  if(!direction.has(id))return null;
+  const el=id[0]==="P"?parts.lane[Number(id.slice(1))-1]:parts.route[Number(id.slice(1))-1];
+  if(!el)return null;
+  let points=samplePath(el,direction.get(id)==="end-to-start");
+  if(entry)points=extendToRoadEdge(points,bounds);
+  segments.set(key,points);
+  return points;
+ }
+ return {segment};
 }
 function joinPointsSmoothly(previous,next){
  if(!previous.length)return next;
@@ -127,14 +154,11 @@ function joinPointsSmoothly(previous,next){
  for(let i=1;i<=n;i++){const f=i/n;bridge.push({x:last.x+(adjusted[0].x-last.x)*f,y:last.y+(adjusted[0].y-last.y)*f});}
  return bridge.concat(adjusted.slice(1));
 }
-function makeTrack(parts,directions,movement){
- const shape=id=>{const index=Number(id.slice(1))-1;return id[0]==="P"?parts.lane[index]:parts.route[index];};
- const ds=new Map((directions?.items||[]).filter(d=>d.confirmed).map(d=>[d.id,d.direction]));
+function makeTrack(network,movement){
  const combined=[];let approach=0,exitStart=0;
  for(const id of [movement.entryLane,movement.id,movement.exitLane]){
-  const el=shape(id);if(!el||!ds.has(id))return null;
-  let points=samplePath(el,ds.get(id)==="end-to-start");
-  if(id===movement.entryLane&&id==="P07")points=extendEntryToBorder(points);
+  const points=network.segment(id,id===movement.entryLane);
+  if(!points)return null;
   if(combined.length&&Math.hypot(combined.at(-1).x-points[0].x,combined.at(-1).y-points[0].y)>50)return null;
   if(id===movement.id)approach=combined.length?combined.reduce((acc,p,i,a)=>i?acc+Math.hypot(p.x-a[i-1].x,p.y-a[i-1].y):0,0):0;
   if(id===movement.exitLane)exitStart=combined.length?combined.reduce((acc,p,i,a)=>i?acc+Math.hypot(p.x-a[i-1].x,p.y-a[i-1].y):0,0):0;
@@ -196,7 +220,8 @@ function animate(now){
 async function init(){
  const response=await fetch("./projects/massag-4.json",{cache:"no-store"});if(!response.ok)throw Error("Veřejný projekt není dostupný");
  const data=await response.json(),parts=readSvg(data.svg.content);
- tracks=(data.movements?.movements||[]).filter(m=>m.confirmed).map(m=>makeTrack(parts,data.directions,m)).filter(Boolean);
+ const network=makeRoadNetwork(parts,data.directions);
+ tracks=(data.movements?.movements||[]).filter(m=>m.confirmed).map(m=>makeTrack(network,m)).filter(Boolean);
  signals=[...new Set(tracks.map(t=>t.signal))];if(!signals.length||!tracks.length)throw Error("Chybí potvrzené průjezdy nebo směry");
  $("state").textContent="Připraveno: "+tracks.length+" průjezdů";
  $("start").onclick=()=>{running=true;$("state").textContent="Simulace běží";};
