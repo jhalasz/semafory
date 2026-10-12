@@ -1,0 +1,89 @@
+const ns="http://www.w3.org/2000/svg",svg=document.getElementById("scene"),$=id=>document.getElementById(id);
+const map=$("map"),markings=$("markings"),carsLayer=$("vehicles"),lights=$("lights");
+let tracks=[],cars=[],passed=0,running=false,clock=0,spawnClock=0,last=0,phase=0,nextId=1,signals=[];
+function svgEl(name,attrs={}){const e=document.createElementNS(ns,name);for(const [k,v]of Object.entries(attrs))e.setAttribute(k,String(v));return e;}
+function category(el){const style=el.getAttribute("style")||"";const stroke=(el.getAttribute("stroke")||(style.match(/stroke:\s*([^;]+)/)||[])[1]||"").toLowerCase(),fill=(el.getAttribute("fill")||(style.match(/fill:\s*([^;]+)/)||[])[1]||"").toLowerCase();const c=stroke&&stroke!=="none"?stroke:fill;if(["#fff","#ffffff"].includes(c))return"markings";if(["#61cbf4","#37b5ed"].includes(c))return"lane";if(["#ffc000","#f59e0b"].includes(c))return"route";if(["#7030a0","#a855f7"].includes(c))return"boundary";if(["#00b050","#22c55e"].includes(c)||stroke==="#042433"&&fill==="#00b050")return"signal";return"map";}
+function readSvg(xml){
+ const doc=new DOMParser().parseFromString(xml,"image/svg+xml");if(doc.querySelector("parsererror"))throw Error("Neplatné SVG");
+ const root=doc.documentElement;for(const el of root.querySelectorAll("script,foreignObject,animate,set"))el.remove();
+ for(const el of root.querySelectorAll("*"))for(const a of [...el.attributes])if(a.name.startsWith("on"))el.removeAttribute(a.name);
+ const d=root.querySelector("defs");if(d)for(const x of d.children)$("defs").append(document.importNode(x,true));
+ const v=root.getAttribute("viewBox");svg.setAttribute("viewBox",v||"0 0 "+(parseFloat(root.getAttribute("width"))||1280)+" "+(parseFloat(root.getAttribute("height"))||720));
+ const parts={lane:[],route:[],signal:[],boundary:[]};
+ function visit(el,parents){
+  if(el.localName==="defs"||el.localName==="clipPath")return;
+  if(el.localName==="g"){for(const c of el.children)visit(c,[...parents,el]);return;}
+  if(!["path","line","polyline","circle","ellipse","polygon","image","rect","use","text"].includes(el.localName))return;
+  const kind=category(el);let dest=kind==="markings"?markings:map;
+  const node=document.importNode(el,true);
+  for(const p of parents){const g=svgEl("g");for(const a of p.attributes)if(["transform","opacity","clip-path"].includes(a.name))g.setAttribute(a.name,a.value);dest.append(g);dest=g;}
+  dest.append(node);
+  if(parts[kind]&&["path","line","polyline","circle","ellipse"].includes(el.localName))parts[kind].push(node);
+ }
+ for(const c of root.children)visit(c,[]);
+ // Hide configuration markup; movement remains aligned in the same coordinates.
+ for(const k of ["lane","route","boundary","signal"])for(const n of parts[k])n.setAttribute("visibility","hidden");
+ try{const b=map.getBBox();if(b.width>0&&b.height>0){const pad=Math.max(b.width,b.height)*.04;svg.setAttribute("viewBox",[b.x-pad,b.y-pad,b.width+2*pad,b.height+2*pad].join(" "));}}catch{}
+ return parts;
+}
+function samplePath(el,reverse=false){
+ const len=el.getTotalLength(),n=Math.max(8,Math.ceil(len/5));const p=[];
+ const matrix=svg.getScreenCTM().inverse().multiply(el.getScreenCTM());
+ for(let i=0;i<=n;i++){const q=el.getPointAtLength(len*(reverse?1-i/n:i/n));const v=new DOMPoint(q.x,q.y).matrixTransform(matrix);p.push({x:v.x,y:v.y});}
+ return p;
+}
+function makeTrack(parts,directions,movement){
+ const shape=id=>{const index=Number(id.slice(1))-1;return id[0]==="P"?parts.lane[index]:parts.route[index];};
+ const ds=new Map((directions?.items||[]).filter(d=>d.confirmed).map(d=>[d.id,d.direction]));
+ const combined=[];let approach=0;
+ for(const id of [movement.entryLane,movement.id,movement.exitLane]){
+  const el=shape(id);if(!el||!ds.has(id))return null;
+  const points=samplePath(el,ds.get(id)==="end-to-start");
+  if(combined.length&&Math.hypot(combined.at(-1).x-points[0].x,combined.at(-1).y-points[0].y)>50)return null;
+  if(id===movement.id)approach=combined.length?combined.reduce((acc,p,i,a)=>i?acc+Math.hypot(p.x-a[i-1].x,p.y-a[i-1].y):0,0):0;
+  combined.push(...(combined.length?points.slice(1):points));
+ }
+ const cumulative=[0];for(let i=1;i<combined.length;i++)cumulative.push(cumulative.at(-1)+Math.hypot(combined[i].x-combined[i-1].x,combined[i].y-combined[i-1].y));
+ return{id:movement.id,signal:movement.signal,points:combined,dist:cumulative,length:cumulative.at(-1),stopAt:approach-12};
+}
+function position(t,s){
+ s=Math.max(0,Math.min(t.length,s));let lo=0,hi=t.dist.length-1;while(lo+1<hi){const mid=(lo+hi)>>1;if(t.dist[mid]<s)lo=mid;else hi=mid;}const a=t.points[lo],b=t.points[hi],f=(s-t.dist[lo])/(t.dist[hi]-t.dist[lo]||1);return{x:a.x+(b.x-a.x)*f,y:a.y+(b.y-a.y)*f,angle:Math.atan2(b.y-a.y,b.x-a.x)*180/Math.PI};
+}
+function spawn(){
+ if(!tracks.length||cars.length>90)return;
+ const t=tracks[Math.floor(Math.random()*tracks.length)];
+ if(cars.some(c=>c.track===t&&c.s<22))return;
+ const truck=Math.random()<.09;const g=svgEl("g"),body=svgEl("rect",{x:truck?-17:-12,y:truck?-6:-5,width:truck?34:24,height:truck?12:10,rx:2,fill:truck?"#f0c673":["#fff5bf","#e14e5a","#61b9ef","#9ee08e"][Math.floor(Math.random()*4)],stroke:"#172536","stroke-width":1.5});
+ g.append(body);carsLayer.append(g);cars.push({id:nextId++,track:t,s:0,v:0,length:truck?34:24,el:g});
+}
+function lightIsGreen(signal){return signals[phase]===signal&&clock%14<11;}
+function animate(now){
+ if(!last)last=now;const real=Math.min(.05,(now-last)/1000);last=now;
+ if(running){const dt=real*Number($("speed").value);clock+=dt;phase=Math.floor(clock/14)%signals.length;spawnClock+=dt;const interval=2.6/Number($("rate").value)*6;
+ while(spawnClock>=interval){spawnClock-=interval;spawn();}
+ for(const car of cars){
+  const others=cars.filter(o=>o!==car&&o.track===car.track&&o.s>=car.s).sort((a,b)=>a.s-b.s);
+  const ahead=others[0];let free=ahead?ahead.s-car.s-(ahead.length+car.length)/2-7:Infinity;
+  if(!lightIsGreen(car.track.signal)&&car.s<car.track.stopAt)free=Math.min(free,car.track.stopAt-car.s);
+  const desired=Math.max(0,Math.min(45,free*1.2));car.v=Math.max(0,Math.min(45,car.v+(car.v<desired?26:-72)*dt));car.s+=Math.min(car.v*dt,Math.max(0,free));
+  const p=position(car.track,car.s);car.el.setAttribute("transform",`translate(${p.x} ${p.y}) rotate(${p.angle})`);
+ }
+ cars=cars.filter(c=>{if(c.s<c.track.length)return true;c.el.remove();passed++;return false;});
+ }
+ $("phase").textContent=signals[phase]||"—";$("count").textContent=cars.length;$("passed").textContent=passed;
+ lights.replaceChildren();for(const [i,s]of signals.entries()){const g=svgEl("g",{transform:`translate(${22+i*75} 25)`});g.append(svgEl("circle",{r:8,fill:lightIsGreen(s)?"#31e779":"#ff5050",stroke:"#fff","stroke-width":1}));const t=svgEl("text",{x:12,y:5,fill:"#fff","font-size":15});t.textContent=s;g.append(t);lights.append(g);}
+ requestAnimationFrame(animate);
+}
+async function init(){
+ const response=await fetch("./projects/massag-4.json",{cache:"no-store"});if(!response.ok)throw Error("Veřejný projekt není dostupný");
+ const data=await response.json(),parts=readSvg(data.svg.content);
+ tracks=(data.movements?.movements||[]).filter(m=>m.confirmed).map(m=>makeTrack(parts,data.directions,m)).filter(Boolean);
+ signals=[...new Set(tracks.map(t=>t.signal))];if(!signals.length||!tracks.length)throw Error("Chybí potvrzené průjezdy nebo směry");
+ $("state").textContent="Připraveno: "+tracks.length+" průjezdů";
+ $("start").onclick=()=>{running=true;$("state").textContent="Simulace běží";};
+ $("pause").onclick=()=>{running=false;$("state").textContent="Pozastaveno";};
+ $("reset").onclick=()=>{for(const c of cars)c.el.remove();cars=[];clock=0;phase=0;passed=0;spawnClock=0;running=true;$("state").textContent="Simulace běží";};
+ for(const id of ["speed","rate"])$(id).oninput=()=>$(id+"-value").textContent=$(id).value+(id==="speed"?"×":"");
+ requestAnimationFrame(animate);
+}
+init().catch(err=>{$("state").textContent="Chyba: "+err.message;console.error(err);});
