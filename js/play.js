@@ -86,17 +86,48 @@ function samplePath(el,reverse=false){
  for(let i=0;i<=n;i++){const q=el.getPointAtLength(len*(reverse?1-i/n:i/n));const v=new DOMPoint(q.x,q.y).matrixTransform(matrix);p.push({x:v.x,y:v.y});}
  return p;
 }
+// Extend a short entry lane back to the visible map edge along its initial
+// tangent. The source project geometry is never modified.
+function extendEntryToBorder(points,mapEdgeX=264){
+ if(points.length<3||points[0].x<=mapEdgeX+25)return points;
+ const first=points[0],probe=points[Math.min(points.length-1,4)];
+ const dx=probe.x-first.x,dy=probe.y-first.y;
+ if(dx<=1)return points;
+ const slope=dy/dx,extra=first.x-mapEdgeX;
+ if(extra>300||Math.abs(slope)>0.8)return points;
+ const prefix=[];
+ for(let i=0;i<Math.ceil(extra/5);i++){
+  const x=mapEdgeX+extra*i/Math.ceil(extra/5);
+  prefix.push({x,y:first.y+(x-first.x)*slope});
+ }
+ return prefix.concat(points);
+}
+function joinPointsSmoothly(previous,next){
+ if(!previous.length)return next;
+ const last=previous[previous.length-1],first=next[0];
+ const gap=Math.hypot(last.x-first.x,last.y-first.y);
+ if(gap>50)return null;
+ // Preserve exact SVG geometry. For small discrepancies, insert an
+ // interpolated connector rather than skipping the start of the next path.
+ if(gap<0.05)return next.slice(1);
+ const n=Math.max(1,Math.ceil(gap/2)),bridge=[];
+ for(let i=1;i<=n;i++){const f=i/n;bridge.push({x:last.x+(first.x-last.x)*f,y:last.y+(first.y-last.y)*f});}
+ return bridge.concat(next.slice(1));
+}
 function makeTrack(parts,directions,movement){
  const shape=id=>{const index=Number(id.slice(1))-1;return id[0]==="P"?parts.lane[index]:parts.route[index];};
  const ds=new Map((directions?.items||[]).filter(d=>d.confirmed).map(d=>[d.id,d.direction]));
  const combined=[];let approach=0,exitStart=0;
  for(const id of [movement.entryLane,movement.id,movement.exitLane]){
   const el=shape(id);if(!el||!ds.has(id))return null;
-  const points=samplePath(el,ds.get(id)==="end-to-start");
+  let points=samplePath(el,ds.get(id)==="end-to-start");
+  if(id===movement.entryLane&&id==="P07")points=extendEntryToBorder(points);
   if(combined.length&&Math.hypot(combined.at(-1).x-points[0].x,combined.at(-1).y-points[0].y)>50)return null;
   if(id===movement.id)approach=combined.length?combined.reduce((acc,p,i,a)=>i?acc+Math.hypot(p.x-a[i-1].x,p.y-a[i-1].y):0,0):0;
   if(id===movement.exitLane)exitStart=combined.length?combined.reduce((acc,p,i,a)=>i?acc+Math.hypot(p.x-a[i-1].x,p.y-a[i-1].y):0,0):0;
-  combined.push(...(combined.length?points.slice(1):points));
+  const joining=combined.length?joinPointsSmoothly(combined,points):points;
+  if(!joining)return null;
+  combined.push(...joining);
  }
  const cumulative=[0];for(let i=1;i<combined.length;i++)cumulative.push(cumulative.at(-1)+Math.hypot(combined[i].x-combined[i-1].x,combined[i].y-combined[i-1].y));
  return{id:movement.id,entryLane:movement.entryLane,exitLane:movement.exitLane,entryEnd:approach,exitStart,signal:movement.signal,points:combined,dist:cumulative,length:cumulative.at(-1),stopAt:approach-12};
