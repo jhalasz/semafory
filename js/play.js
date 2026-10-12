@@ -97,7 +97,7 @@ function makeTrack(parts,directions,movement){
   combined.push(...(combined.length?points.slice(1):points));
  }
  const cumulative=[0];for(let i=1;i<combined.length;i++)cumulative.push(cumulative.at(-1)+Math.hypot(combined[i].x-combined[i-1].x,combined[i].y-combined[i-1].y));
- return{id:movement.id,signal:movement.signal,points:combined,dist:cumulative,length:cumulative.at(-1),stopAt:approach-12};
+ return{id:movement.id,entryLane:movement.entryLane,signal:movement.signal,points:combined,dist:cumulative,length:cumulative.at(-1),stopAt:approach-12};
 }
 function position(t,s){
  s=Math.max(0,Math.min(t.length,s));let lo=0,hi=t.dist.length-1;while(lo+1<hi){const mid=(lo+hi)>>1;if(t.dist[mid]<s)lo=mid;else hi=mid;}const a=t.points[lo],b=t.points[hi],f=(s-t.dist[lo])/(t.dist[hi]-t.dist[lo]||1);return{x:a.x+(b.x-a.x)*f,y:a.y+(b.y-a.y)*f,angle:Math.atan2(b.y-a.y,b.x-a.x)*180/Math.PI};
@@ -105,9 +105,9 @@ function position(t,s){
 function spawn(){
  if(!tracks.length||cars.length>90)return;
  const t=tracks[Math.floor(Math.random()*tracks.length)];
- if(cars.some(c=>c.track===t&&c.s<22))return;
+ if(cars.some(c=>c.track.entryLane===t.entryLane&&c.s<65))return;
  const truck=Math.random()<.09;const g=svgEl("g"),body=svgEl("rect",{x:truck?-17:-12,y:truck?-6:-5,width:truck?34:24,height:truck?12:10,rx:2,fill:truck?"#f0c673":["#fff5bf","#e14e5a","#61b9ef","#9ee08e"][Math.floor(Math.random()*4)],stroke:"#172536","stroke-width":1.5});
- g.append(body);carsLayer.append(g);cars.push({id:nextId++,track:t,s:0,v:0,length:truck?34:24,el:g});
+ g.append(body);carsLayer.append(g);cars.push({id:nextId++,track:t,s:0,v:truck?31:42,length:truck?34:24,el:g});
 }
 function lightIsGreen(signal){return signals[phase]===signal&&clock%14<11;}
 function animate(now){
