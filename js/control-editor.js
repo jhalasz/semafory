@@ -34,7 +34,8 @@ export function createControlEditor(scene,container,getDirections){
  }
  const help=document.createElement("p");help.className="help";
  help.textContent="Fialové hranice H01–H07 a zelené semafory S01–S04 jsou očíslované přímo na mapě. Vyber pruh P, pak klikni na štítek H a S nebo použij nabídky. Potvrzuj jen skutečné příjezdové pruhy.";container.append(help);
- const list=document.createElement("div");container.append(list);
+ const reset=document.createElement("button");reset.type="button";reset.textContent="Zobrazit všechny hranice a pruhy";reset.onclick=()=>{selected=null;render();document.getElementById("show-full-map").click();};container.append(reset);
+ const list=document.createElement("div");list.className="controls-list";container.append(list);
  let selected=null;
  const render=()=>{
   list.replaceChildren();layer.replaceChildren();
@@ -59,11 +60,11 @@ export function createControlEditor(scene,container,getDirections){
    }
   }
   const status=document.getElementById("control-report");
-  status.textContent="Řídicí hranice: "+boundaries.length+" · semafory: "+signals.length+" · potvrzené vazby: "+assignments.filter(x=>x.confirmed).length+"/"+assignments.length;
+  status.textContent="Řídicí hranice: "+boundaries.length+" · semafory: "+signals.length+" · pruhy v seznamu: "+assignments.length+" · potvrzené vazby: "+assignments.filter(x=>x.confirmed).length+"/"+assignments.length;
   for(const record of assignments){
    const row=document.createElement("div");row.className="direction-item"+(record.lane===selected?" selected":"");
    const btn=document.createElement("button");btn.type="button";btn.textContent=record.lane+" · "+(record.confirmed?"potvrzeno":record.proposed?"návrh":"nepřiřazeno");
-   btn.onclick=()=>{selected=record.lane;render();const l=laneRecords.find(x=>x.id===record.lane);if(l){const x=(l.start.x+l.end.x)/2,y=(l.start.y+l.end.y)/2;const bb=scene.viewBox.baseVal,w=Math.max(120,bb.width*.65),h=Math.max(120,bb.height*.65);scene.setAttribute("viewBox",[x-w/2,y-h/2,w,h].join(" "));}};
+   btn.onclick=()=>{selected=selected===record.lane?null:record.lane;render();};
    const boundary=document.createElement("select");boundary.setAttribute("aria-label","Řídicí hranice "+record.lane);
    boundary.add(new Option("Bez hranice",""));for(const b of boundaries)boundary.add(new Option(b.id,b.id));boundary.value=record.boundary||"";
    boundary.onchange=()=>{record.boundary=boundary.value||null;record.confirmed=false;record.proposed=false;scene.dispatchEvent(new Event("semafory:project-changed"));render();};
@@ -73,13 +74,18 @@ export function createControlEditor(scene,container,getDirections){
    const ok=document.createElement("button");ok.type="button";ok.textContent="Potvrdit";ok.disabled=!record.boundary||!record.signal||record.confirmed;
    ok.onclick=()=>{record.confirmed=true;record.proposed=false;scene.dispatchEvent(new Event("semafory:project-changed"));render();};
    row.append(btn,boundary,signal,ok);list.append(row);
-   if(selected!==record.lane)continue;
+  }
+  // Highlight after all rows have been built. An overlay error must never truncate the list.
+  if(selected){try{
+   const record=assignments.find(a=>a.lane===selected);
+   if(!record)return;
    const l=laneRecords.find(x=>x.id===record.lane);
+   if(!l)return;
    for(const [label,p,color] of [[l.id,l.start,"#38bdf8"],[l.id,l.end,"#38bdf8"],...[boundaries.filter(b=>b.id===record.boundary).map(b=>[b.id,b.p,"#c084fc"])],...[signals.filter(s=>s.id===record.signal).map(s=>[s.id,s.p,"#22c55e"])] ]){
     const g=svgMake("g",{},layer);svgMake("circle",{cx:p.x,cy:p.y,r:11,fill:"#142437",stroke:color,"stroke-width":3,"vector-effect":"non-scaling-stroke"},g);
     const t=svgMake("text",{x:p.x+15,y:p.y-13,fill:"#fff","font-size":14,"font-weight":"bold"},g);t.textContent=label;
    }
-  }
+  }catch(error){console.error("Zvýraznění vazeb selhalo",error);}}
  };
  render();
  return {export:()=>({format:"semafory-controls-1.0",assignments:assignments.map(x=>({...x})),boundaries:boundaries.map(x=>({id:x.id,point:x.p})),signals:signals.map(x=>({id:x.id,point:x.p}))}),restore(data){if(!Array.isArray(data?.assignments))return;for(const old of data.assignments){const a=assignments.find(x=>x.lane===old.lane);if(!a)continue;a.boundary=boundaries.some(b=>b.id===old.boundary)?old.boundary:null;a.signal=signals.some(b=>b.id===old.signal)?old.signal:null;a.confirmed=!!old.confirmed&&!!a.boundary&&!!a.signal;a.proposed=false;}render();},dispose(){layer.replaceChildren();container.replaceChildren();}};
