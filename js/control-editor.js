@@ -33,11 +33,31 @@ export function createControlEditor(scene,container,getDirections){
   }
  }
  const help=document.createElement("p");help.className="help";
- help.textContent="Přiřaď k příjezdovému pruhu fialovou řídicí hranici a zelený semafor. Návrhy podle vzdálenosti jsou pouze orientační. Potvrzení znamená ručně ověřenou vazbu.";container.append(help);
+ help.textContent="Fialové hranice H01–H07 a zelené semafory S01–S04 jsou očíslované přímo na mapě. Vyber pruh P, pak klikni na štítek H a S nebo použij nabídky. Potvrzuj jen skutečné příjezdové pruhy.";container.append(help);
  const list=document.createElement("div");container.append(list);
  let selected=null;
  const render=()=>{
   list.replaceChildren();layer.replaceChildren();
+  // Number all boundaries and signals permanently at their true SVG coordinates.
+  for(const [items,color] of [[boundaries,"#d8a2ff"],[signals,"#34d399"]]){
+   for(const item of items){
+    const active=assignments.some(a=>a.lane===selected&&(a.boundary===item.id||a.signal===item.id));
+    const x=item.p.x,y=item.p.y;
+    const g=svgMake("g",{cursor:"pointer",role:"button"},layer);
+    svgMake("line",{x1:x,y1:y,x2:x+19,y2:y-18,stroke:color,"stroke-width":active?3:1.5,"vector-effect":"non-scaling-stroke"},g);
+    svgMake("rect",{x:x+7,y:y-38,width:43,height:21,rx:5,fill:"#162238",stroke:color,"stroke-width":active?3:1.5,"vector-effect":"non-scaling-stroke"},g);
+    const t=svgMake("text",{x:x+28.5,y:y-23,"text-anchor":"middle",fill:"#fff","font-size":12,"font-weight":"bold","pointer-events":"none"},g);
+    t.textContent=item.id;
+    svgMake("rect",{x:x+3,y:y-43,width:52,height:32,fill:"transparent"},g);
+    g.addEventListener("click",()=>{
+     const rec=assignments.find(a=>a.lane===selected);
+     if(!rec)return;
+     if(item.id.startsWith("H"))rec.boundary=item.id;else rec.signal=item.id;
+     rec.confirmed=false;rec.proposed=false;
+     scene.dispatchEvent(new Event("semafory:project-changed"));render();
+    });
+   }
+  }
   const status=document.getElementById("control-report");
   status.textContent="Řídicí hranice: "+boundaries.length+" · semafory: "+signals.length+" · potvrzené vazby: "+assignments.filter(x=>x.confirmed).length+"/"+assignments.length;
   for(const record of assignments){
