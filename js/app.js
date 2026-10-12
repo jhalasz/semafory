@@ -95,7 +95,7 @@ input.onchange=async()=>{
   }
  }catch(e){status.textContent="Chyba importu";note.textContent="Import se nezdařil: "+e.message;console.error("Chyba importu SVG",e);}
 };
-document.getElementById("reset").onclick=()=>{sourceSvg=null;projectId=null;clear();input.value="";if(fileUrl)URL.revokeObjectURL(fileUrl);fileUrl=null;ph.setAttribute("visibility","visible");status.textContent="Čeká na podklad";note.textContent="";};
+document.getElementById("reset").onclick=()=>{sourceSvg=null;projectId=null;localStorage.removeItem("semafory-last-project");clear();input.value="";if(fileUrl)URL.revokeObjectURL(fileUrl);fileUrl=null;ph.setAttribute("visibility","visible");status.textContent="Čeká na podklad";note.textContent="";};
 
 document.getElementById("show-connections").addEventListener("change",e=>document.getElementById("connections-layer").setAttribute("visibility",e.target.checked?"visible":"hidden"));
 
