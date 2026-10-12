@@ -32,6 +32,21 @@ function readSvg(xml){
   if(parts[kind]&&["path","line","polyline","circle","ellipse"].includes(el.localName))parts[kind].push(node);
  }
  for(const c of root.children)visit(c,[]);
+ // Public renderer: draw the original SVG as one correctly ordered tree.
+ // Keep its embedded image, clip paths and parent transforms intact.
+ // Only remove authoring overlays; invisible geometry above remains
+ // available for car path sampling.
+ const nativeRoot=document.importNode(root,true);
+ nativeRoot.removeAttribute("width");nativeRoot.removeAttribute("height");
+ nativeRoot.setAttribute("width","100%");nativeRoot.setAttribute("height","100%");
+ for(const node of [...nativeRoot.querySelectorAll("path,line,polyline,circle,ellipse,polygon,use")]){
+  const kind=category(node);
+  const ref=node.getAttribute("href")||node.getAttributeNS("http://www.w3.org/1999/xlink","href");
+  if(["lane","route","boundary","signal"].includes(kind)||ref==="#img3")node.remove();
+ }
+ $("native-map").replaceChildren(nativeRoot);
+ map.setAttribute("visibility","hidden");markings.setAttribute("visibility","hidden");
+
  // Draw the aerial photograph explicitly over PowerPoint's opaque white slide
  // background. The original <use href="#img1"> is deeply nested in clipped
  // transformed groups and was not reliably painted in the public view.
