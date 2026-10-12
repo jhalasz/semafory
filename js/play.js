@@ -124,7 +124,7 @@ function animate(now){
    let delta=Infinity;
    if(other.track===car.track&&other.s>=car.s)delta=other.s-car.s;
    if(car.track.entryLane===other.track.entryLane&&car.s<=car.track.entryEnd){
-    if(other.s>=car.s)delta=Math.min(delta,other.s-car.s);
+    if(other.s>=car.s&&other.s<=other.track.entryEnd+other.length)delta=Math.min(delta,other.s-car.s);
    }
    if(car.track.exitLane===other.track.exitLane&&car.s>=car.track.exitStart-35){
     const otherExit=other.s-other.track.exitStart;
