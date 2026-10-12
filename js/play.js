@@ -41,10 +41,22 @@ function readSvg(xml){
   const use=[...root.querySelectorAll("use")].find(n=>(n.getAttribute("href")||n.getAttributeNS("http://www.w3.org/1999/xlink","href"))==="#img1");
   if(href&&use){
    const chain=[];for(let n=use;n&&n!==root;n=n.parentElement)if(n.hasAttribute("transform"))chain.unshift(n.getAttribute("transform"));
-   let matrix=new DOMMatrix();for(const transform of chain)matrix=matrix.multiply(new DOMMatrix(transform));
+   let matrix=new DOMMatrix();
+   for(const transform of chain){
+    // PowerPoint writes SVG matrices separated by spaces. DOMMatrix(string)
+    // expects a CSS transform and rejects the otherwise valid SVG syntax.
+    const ops=[...transform.matchAll(/(matrix|translate|scale|rotate)\\s*\\(([^)]*)\\)/g)];
+    for(const op of ops){
+     const nums=(op[2].match(/[-+]?(?:\\d*\\.)?\\d+(?:[eE][-+]?\\d+)?/g)||[]).map(Number);
+     if(op[1]==="matrix"&&nums.length===6)matrix=matrix.multiply(new DOMMatrix(nums));
+     else if(op[1]==="translate")matrix=matrix.translate(nums[0]||0,nums[1]||0);
+     else if(op[1]==="scale")matrix=matrix.scale(nums[0]??1,nums[1]??nums[0]??1);
+     else if(op[1]==="rotate")matrix=matrix.rotate(nums[0]||0);
+    }
+   }
    const width=Number(photoSource.getAttribute("width"))||1149,height=Number(photoSource.getAttribute("height"))||928;
    const rect=svgEl("image",{width,height,preserveAspectRatio:"none"});
-   rect.setAttribute("href",href);rect.setAttribute("transform",matrix.toString());map.append(rect);
+   rect.setAttribute("href",href);rect.setAttribute("transform",`matrix(${[matrix.a,matrix.b,matrix.c,matrix.d,matrix.e,matrix.f].join(" ")})`);map.append(rect);
   }
  }
  // Hide configuration markup; movement remains aligned in the same coordinates.
