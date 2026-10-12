@@ -1,4 +1,4 @@
-import {createControlEditor} from "./control-editor.js?v=1.8.1";
+import {createControlEditor} from "./control-editor.js?v=1.8.2";
 import {projectStore} from "./project-store.js?v=1.7";
 import {createDirectionEditor} from "./directions.js?v=1.6";
 import {createConnectionEditor} from "./connection-editor.js?v=1.6";
