@@ -1,7 +1,8 @@
+import {createControlEditor} from "./control-editor.js?v=1.8";
 import {projectStore} from "./project-store.js?v=1.7";
 import {createDirectionEditor} from "./directions.js?v=1.6";
 import {createConnectionEditor} from "./connection-editor.js?v=1.6";
-let connections=null,directions=null;
+let connections=null,directions=null,controls=null;
 const ns="http://www.w3.org/2000/svg";
 const keys=[["photo","Původní fotomapa","#64748b"],["beautified","Upravená mapa","#39a78e"],["markings","Vodorovné značení","#fff"],["lanes","Logické jízdní pruhy","#61cbf4"],["routes","Trajektorie","#ffc000"],["entry","Řídicí hranice","#7030a0"],["signals","Semafory","#00b050"],["other","Ostatní objekty","#aaa"]];
 const scene=document.getElementById("scene"),ph=document.getElementById("placeholder"),status=document.getElementById("status"),note=document.getElementById("diagnostic"),input=document.getElementById("photo");
@@ -17,7 +18,7 @@ for(const [key,label,color] of keys){
  opacity.oninput=()=>el(key).setAttribute("opacity",opacity.value/100);
  row.append(check,chip,name,opacity);document.getElementById("layers").append(row);
 }
-function clear(){beautifiedMap=null;fullViewBox=null;document.getElementById("show-full-map").disabled=true;document.getElementById("show-beautified-map").disabled=true;if(directions){directions.dispose();directions=null;}document.getElementById("export-directions").disabled=true;document.getElementById("direction-report").textContent="";if(connections){connections.dispose();connections=null;}document.getElementById("export-connections").disabled=true;for(const [k] of keys)el(k).replaceChildren();document.getElementById("import-defs").replaceChildren();document.getElementById("connections-layer").replaceChildren();document.getElementById("connection-report").textContent="Nahraj SVG pro kontrolu napojení.";}
+function clear(){if(controls){controls.dispose();controls=null;}beautifiedMap=null;fullViewBox=null;document.getElementById("show-full-map").disabled=true;document.getElementById("show-beautified-map").disabled=true;if(directions){directions.dispose();directions=null;}document.getElementById("export-directions").disabled=true;document.getElementById("direction-report").textContent="";if(connections){connections.dispose();connections=null;}document.getElementById("export-connections").disabled=true;for(const [k] of keys)el(k).replaceChildren();document.getElementById("import-defs").replaceChildren();document.getElementById("connections-layer").replaceChildren();document.getElementById("connection-report").textContent="Nahraj SVG pro kontrolu napojení.";}
 function color(e){const style=e.getAttribute("style")||"";const stroke=e.getAttribute("stroke")||(style.match(/stroke:\s*([^;]+)/)||[])[1];const fill=e.getAttribute("fill")||(style.match(/fill:\s*([^;]+)/)||[])[1];return (stroke&&stroke!=="none"?stroke:fill||"").toLowerCase();}
 function category(e){
  if(e.localName==="image"||e.localName==="use"||e.localName==="rect")return "photo";
@@ -80,6 +81,8 @@ function svgImport(xml,name){
   document.getElementById("direction-report").textContent="Chyba určení směrů: "+error.message;
   console.error(error);
  }
+ try{controls=createControlEditor(scene,document.getElementById("control-editor"),()=>directions?.export());}
+ catch(error){document.getElementById("control-report").textContent="Chyba řídicích vazeb: "+error.message;console.error(error);}
 }
 input.onchange=async()=>{
  const f=input.files[0];input.value="";if(!f)return;
@@ -115,7 +118,7 @@ const projectNotice=document.getElementById("project-status");
 function showProjectStatus(message){projectNotice.textContent=message;}
 function snapshot(){
  if(!sourceSvg)return null;
- return {format:"semafory-project",version:1,id:projectId||crypto.randomUUID(),name:document.getElementById("project-name").value.trim()||status.textContent,updated:new Date().toISOString(),svg:{name:status.textContent,content:sourceSvg},directions:directions?.export()||null,connections:connections?.export()||[],beautifiedMap,visibility:Object.fromEntries(keys.map(([k])=>[k,el(k).getAttribute("visibility")!=="hidden"]))};
+ return {format:"semafory-project",version:1,id:projectId||crypto.randomUUID(),name:document.getElementById("project-name").value.trim()||status.textContent,updated:new Date().toISOString(),svg:{name:status.textContent,content:sourceSvg},directions:directions?.export()||null,connections:connections?.export()||[],controls:controls?.export()||null,beautifiedMap,visibility:Object.fromEntries(keys.map(([k])=>[k,el(k).getAttribute("visibility")!=="hidden"]))};
 }
 async function saveProject(){
  if(loading)return;
@@ -149,6 +152,7 @@ async function loadProject(data){
   svgImport(data.svg.content,data.svg.name||data.name||"Projekt");
   directions?.restore(data.directions);
   connections?.restore(data.connections);
+  controls?.restore(data.controls);
   setBeautifiedMap(data.beautifiedMap||null);
   fullButton.disabled=false;
   for(const [key,visible] of Object.entries(data.visibility||{})){
