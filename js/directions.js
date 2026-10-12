@@ -1,3 +1,4 @@
+import {inferTopology} from "./topology.js?v=1.5";
 const NS="http://www.w3.org/2000/svg";
 function pointToRoot(el,svg,p){const a=svg.getScreenCTM(),b=el.getScreenCTM();if(!a||!b)return null;const q=new DOMPoint(p.x,p.y).matrixTransform(a.inverse().multiply(b));return {x:q.x,y:q.y};}
 function paths(group,svg,prefix){
@@ -21,23 +22,17 @@ export function createDirectionEditor(svg,container){
  const routes=paths(svg.querySelector("#routes-layer"),svg,"T");
  const all=[...lanes,...routes],vb=svg.viewBox.baseVal;
  const near=Math.hypot(vb.width,vb.height)*.018;
- // Heuristic based on continuity: the end closer to another network endpoint is
- // a possible destination. It is not a legal inference of traffic direction.
- for(const item of all){
-  const others=all.filter(o=>o!==item);
-  const a=Math.min(Infinity,...others.map(o=>Math.min(distance(item.start,o.start),distance(item.start,o.end))));
-  const b=Math.min(Infinity,...others.map(o=>Math.min(distance(item.end,o.start),distance(item.end,o.end))));
-  if(Math.min(a,b)<=near&&Math.abs(a-b)>near*.35)item.direction=a>b?1:-1;
- }
+ const decisions=inferTopology(all.map(x=>({...x,type:x.id[0]==="P"?"lane":"route"})),near);
+ all.forEach((item,i)=>{item.direction=decisions[i].direction;item.confidence=decisions[i].confidence;item.reason=decisions[i].reason;item.suggestedDirection=item.direction;});
  const head=document.createElement("p");head.className="help";
- head.textContent="Směry jsou pouze geometrické návrhy; skutečný směr musí být ověřen podle komunikace a dopravního značení. Klikni na řádek nebo šipku a směr potvrď.";container.append(head);
+ head.textContent="Návrhy využívají návaznosti pruhů a trajektorií. Neurčité případy zůstávají neurčené. Pravidla provozu a značení budou ověřována v samostatné vrstvě; zde směr potvrď nebo oprav.";container.append(head);
  const list=document.createElement("div");list.className="direction-list";container.append(list);
  let selected=null;
  const baseView=svg.getAttribute("viewBox");
  function selectItem(item){
   selected=item.id;
   svg.dispatchEvent(new CustomEvent("semafory:direction-selected"));
-  const bounds=baseView.trim().split(/[\\s,]+/).map(Number);
+  const bounds=baseView.trim().split(/[\s,]+/).map(Number);
   const center={x:(item.start.x+item.end.x)/2,y:(item.start.y+item.end.y)/2};
   const w=bounds[2]/2.1,h=bounds[3]/2.1;
   svg.setAttribute("viewBox",[center.x-w/2,center.y-h/2,w,h].join(" "));
@@ -65,7 +60,7 @@ export function createDirectionEditor(svg,container){
    badge.addEventListener("click",choose);
    marker.addEventListener("click",choose);marker.addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();choose();}});
    const row=document.createElement("div");row.className="direction-item"+(selected===item.id?" selected":"");
-   const title=document.createElement("button");title.textContent=item.id+" · "+(item.confirmed?"potvrzeno":item.direction===0?"směr neurčen":"návrh směru");
+   const title=document.createElement("button");title.textContent=item.id+" · "+(item.confirmed?"potvrzeno":item.direction===0?"směr neurčen":"návrh ("+item.confidence+")");
    title.type="button";title.addEventListener("click",choose);row.append(title);
    const flip=document.createElement("button");flip.type="button";flip.textContent="Obrátit";flip.addEventListener("click",()=>{item.direction=item.direction===-1?1:-1;item.confirmed=false;selectItem(item);});
    const confirm=document.createElement("button");confirm.type="button";confirm.textContent="Potvrdit";confirm.disabled=item.confirmed;confirm.addEventListener("click",()=>{item.direction=item.direction===-1?-1:1;item.confirmed=true;selected=item.id;render();});
@@ -74,5 +69,5 @@ export function createDirectionEditor(svg,container){
   document.getElementById("direction-report").textContent="Pruhy: "+lanes.length+" · trajektorie: "+routes.length+" · potvrzeno: "+all.filter(x=>x.confirmed).length+"/"+all.length+". Žlutá šipka znamená neurčený směr.";
  }
  render();
- return {export:()=>({format:"semafory-directions-1.0",items:all.map(p=>({id:p.id,type:p.id[0]==="P"?"lane":"route",direction:p.direction===-1?"end-to-start":p.direction===1?"start-to-end":"unknown",confirmed:p.confirmed,start:p.start,end:p.end}))}),dispose(){layer.replaceChildren();container.replaceChildren();}};
+ return {export:()=>({format:"semafory-directions-1.0",items:all.map(p=>({id:p.id,type:p.id[0]==="P"?"lane":"route",direction:p.direction===-1?"end-to-start":p.direction===1?"start-to-end":"unknown",suggestedDirection:p.suggestedDirection===-1?"end-to-start":p.suggestedDirection===1?"start-to-end":"unknown",confidence:p.confidence,confirmed:p.confirmed,manuallyChanged:p.confirmed&&p.direction!==p.suggestedDirection,start:p.start,end:p.end}))}),dispose(){layer.replaceChildren();container.replaceChildren();}};
 }
