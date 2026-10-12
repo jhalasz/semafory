@@ -156,7 +156,13 @@ document.getElementById("svg-update").addEventListener("change",async e=>{
    // Rebuild renderers and then restore the same confirmed identifiers.
    // Keeping the original project ID prevents creating another project.
    await loadProject({...backup,svg:{name:f.name,content:xml}});
-   showProjectStatus("SVG aktualizováno ("+summary+"). Nastavení zachována. Záloha stažena.");
+   const currentConnections=connections?.export()||[];
+   const previousConnections=backup.connections||[];
+   const lost=previousConnections.filter(old=>!currentConnections.some(now=>now.routeEndpoint===old.routeEndpoint));
+   const connectionInfo=lost.length
+    ?" POZOR: "+lost.length+" dříve potvrzených návazností vyžaduje nové posouzení (spoje "+lost.map(x=>x.routeEndpoint).join(", ")+"). Otevři panel Kontrola návazností a znovu je potvrď."
+    :" Všechny dříve potvrzené návaznosti byly rozpoznány i po výměně SVG.";
+   showProjectStatus("SVG aktualizováno ("+summary+"). Záloha stažena."+connectionInfo);
   }catch(err){
    await loadProject(backup);
    throw err;
