@@ -1,4 +1,4 @@
-import {DriverRiskModel} from "./driver-behavior.js?v=2.1";
+import {DriverRiskModel} from "./driver-behavior.js?v=2.1.1";
 import {createConflictEditor} from "./conflict-editor.js?v=2.0";
 import {createMovementEditor} from "./movement-editor.js?v=1.9";
 import {createControlEditor} from "./control-editor.js?v=1.8.2";
