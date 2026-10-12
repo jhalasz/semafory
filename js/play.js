@@ -1,5 +1,5 @@
 import {VEHICLE_TYPES,advanceVehicle} from "./vehicle-dynamics.js?v=2.3";
-import {createSignalController} from "./signal-controller.js?v=2.4.2";
+import {createSignalController} from "./signal-controller.js?v=2.4.3";
 const ns="http://www.w3.org/2000/svg",svg=document.getElementById("scene"),$=id=>document.getElementById(id);
 const map=$("map"),photoMap=$("photo-map"),markings=$("markings"),carsLayer=$("vehicles"),lights=$("lights");
 let tracks=[],cars=[],passed=0,running=false,clock=0,spawnClock=0,last=0,phase=0,nextId=1,signals=[],controller=null,signalLocations=[];
@@ -206,15 +206,24 @@ function renderSignalLights(){
  lights.replaceChildren();
  for(const loc of signalLocations){
   const state=controller.state(loc.id);
-  const g=svgEl("g",{transform:`translate(${loc.x} ${loc.y})`});
+  const g=svgEl("g",{transform:`translate(${loc.x} ${loc.y})`,cursor:"pointer","data-signal":loc.id,role:"button",tabindex:0});
+  g.addEventListener("click",()=>requestSignal(loc.id));
+  g.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();requestSignal(loc.id);}});
   const body=svgEl("rect",{x:-8,y:-21,width:16,height:42,rx:4,fill:"#18202a",stroke:"#e4edf7","stroke-width":1.4});
   g.append(body);
   for(const [y,color,active] of [[-13,"#f43f46",state==="red"||state==="red-yellow"],[0,"#ffbf37",state==="yellow"||state==="red-yellow"],[13,"#2bdf64",state==="green"]]){
    g.append(svgEl("circle",{cx:0,cy:y,r:5.3,fill:active?color:"#343940",stroke:"#111820","stroke-width":.7}));
   }
-  const title=svgEl("title");title.textContent=loc.id+" – "+state;g.append(title);
+  g.append(svgEl("rect",{x:-14,y:-26,width:28,height:52,fill:"transparent","pointer-events":"all"}));
+  const title=svgEl("title");title.textContent=loc.id+" – "+state+" · kliknutím vyžádat zelenou";g.append(title);
   lights.append(g);
  }
+}
+function requestSignal(id){
+ if(!controller)return;
+ if(!$("manual").checked){$("state").textContent="Nejprve zapni ruční ovládání.";return;}
+ const ok=controller.requestSignal(id);
+ $("state").textContent=ok?"Vyžádána zelená pro "+id+" (bezpečné přepnutí).":"Tento semafor už má zelenou.";
 }
 function lightIsGreen(signal){return controller?.state(signal)==="green";}
 function animate(now){
@@ -264,6 +273,8 @@ async function init(){
  const plan=data.signalPlan;
  if(!plan||plan.stages.some(stage=>stage.green.some(signal=>!signals.includes(signal))))throw Error("Chybí platný fázový plán projektu");
  controller=createSignalController(plan);
+ controller.setManual($("manual").checked);
+ $("manual").onchange=()=>{controller.setManual($("manual").checked);$("state").textContent=$("manual").checked?"Ruční řízení: klikni na semafor.":"Automatické řízení.";};
  if(signals.some(id=>!signalLocations.some(loc=>loc.id===id)))throw Error("V SVG chybí pozice potvrzeného semaforu");
  $("state").textContent="Připraveno: "+tracks.length+" průjezdů";
  $("start").onclick=()=>{running=true;$("state").textContent="Simulace běží";};
