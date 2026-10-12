@@ -202,21 +202,24 @@ function locateSignals(parts){
   return {id:"S"+String(i+1).padStart(2,"0"),x:point.x,y:point.y};
  });
 }
+const signalVisuals=new Map();
 function renderSignalLights(){
- lights.replaceChildren();
  for(const loc of signalLocations){
-  const state=controller.state(loc.id);
-  const g=svgEl("g",{transform:`translate(${loc.x} ${loc.y})`,cursor:"pointer","data-signal":loc.id,role:"button",tabindex:0});
-  g.addEventListener("click",()=>requestSignal(loc.id));
-  g.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();requestSignal(loc.id);}});
-  const body=svgEl("rect",{x:-8,y:-21,width:16,height:42,rx:4,fill:"#18202a",stroke:"#e4edf7","stroke-width":1.4});
-  g.append(body);
-  for(const [y,color,active] of [[-13,"#f43f46",state==="red"||state==="red-yellow"],[0,"#ffbf37",state==="yellow"||state==="red-yellow"],[13,"#2bdf64",state==="green"]]){
-   g.append(svgEl("circle",{cx:0,cy:y,r:5.3,fill:active?color:"#343940",stroke:"#111820","stroke-width":.7}));
+  let visual=signalVisuals.get(loc.id);
+  if(!visual){
+   const g=svgEl("g",{transform:`translate(${loc.x} ${loc.y})`,cursor:"pointer","data-signal":loc.id,role:"button",tabindex:0});
+   g.append(svgEl("rect",{x:-8,y:-21,width:16,height:42,rx:4,fill:"#18202a",stroke:"#e4edf7","stroke-width":1.4}));
+   const lamps=[-13,0,13].map(y=>{const lamp=svgEl("circle",{cx:0,cy:y,r:5.3,fill:"#343940",stroke:"#111820","stroke-width":.7});g.append(lamp);return lamp;});
+   g.append(svgEl("rect",{x:-14,y:-26,width:28,height:52,fill:"transparent","pointer-events":"all"}));
+   const title=svgEl("title");g.append(title);
+   g.addEventListener("click",()=>requestSignal(loc.id));
+   g.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();requestSignal(loc.id);}});
+   lights.append(g);visual={lamps,title};signalVisuals.set(loc.id,visual);
   }
-  g.append(svgEl("rect",{x:-14,y:-26,width:28,height:52,fill:"transparent","pointer-events":"all"}));
-  const title=svgEl("title");title.textContent=loc.id+" – "+state+" · kliknutím vyžádat zelenou";g.append(title);
-  lights.append(g);
+  const state=controller.state(loc.id);
+  const active=[state==="red"||state==="red-yellow",state==="yellow"||state==="red-yellow",state==="green"];
+  ["#f43f46","#ffbf37","#2bdf64"].forEach((color,i)=>visual.lamps[i].setAttribute("fill",active[i]?color:"#343940"));
+  visual.title.textContent=loc.id+" – "+state+" · kliknutím vyžádat zelenou";
  }
 }
 function requestSignal(id){
@@ -241,10 +244,27 @@ function animate(now){
    // One queue per physical entry lane, independent of the future turn.
    // The leading vehicle owns the shared lane until its REAR bumper
    // has cleared the branching point; a follower must not pass it.
-   if(car.track.entryLane===other.track.entryLane&&car.s<=car.track.entryEnd+car.length/2){
+   if(car.track.entryLane===other.track.entryLane){
     const split=Math.min(car.track.entryEnd,other.track.entryEnd);
     const leaderRear=other.s-other.length/2;
-    if(other.s>car.s&&leaderRear<split+4)delta=Math.min(delta,other.s-car.s);
+    // Queue stays shared until rear bumper clears fork AND its divergent
+    // trajectory has physically separated from the following vehicle.
+    if(other.s>car.s&&leaderRear<split+Math.max(12,car.length)){
+     delta=Math.min(delta,other.s-car.s);
+    }
+    // After the fork, compare physical footprints: different movement tracks
+    // can still overlap, so arc-length comparison alone is insufficient.
+    const forkReach=65;
+    if(other.id<car.id&&car.s>split-forkReach&&car.s<split+forkReach&&
+       other.s>other.track.entryEnd-forkReach&&other.s<other.track.entryEnd+forkReach){
+      const p=position(car.track,car.s),q=position(other.track,other.s);
+      const sep=Math.hypot(p.x-q.x,p.y-q.y);
+      const safe=(car.length+other.length)/2+7;
+      if(sep<safe+Math.max(0,car.v)*.8){
+       const projected=Math.max(0,sep-(car.length+other.length)/2);
+       if(!obstacle||projected<obstacle.gap)obstacle={gap:projected,v:Math.min(car.v,other.v)};
+      }
+    }
    }
    if(car.track.exitLane===other.track.exitLane&&car.s>=car.track.exitStart-35){
     const otherExit=other.s-other.track.exitStart;
