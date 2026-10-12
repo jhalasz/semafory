@@ -84,9 +84,9 @@ function svgImport(xml,name){
   console.error(error);
  }
  try{movements=createMovementEditor(scene,document.getElementById("movement-editor"),()=>directions?.export());}
+ catch(error){document.getElementById("movement-report").textContent="Chyba průjezdů: "+error.message;console.error(error);}
  try{conflicts=createConflictEditor(scene,document.getElementById("conflict-editor"),()=>movements?.export());}
  catch(error){document.getElementById("conflict-report").textContent="Chyba kolizního náhledu: "+error.message;console.error(error);}
- catch(error){document.getElementById("movement-report").textContent="Chyba průjezdů: "+error.message;console.error(error);}
  // The former P→H→S editor is superseded by per-trajectory movements.
  // Its historical project data are preserved for backward compatibility.
  /*  try{controls=createControlEditor(scene,document.getElementById("control-editor"),()=>directions?.export());}
