@@ -32,6 +32,21 @@ function readSvg(xml){
   if(parts[kind]&&["path","line","polyline","circle","ellipse"].includes(el.localName))parts[kind].push(node);
  }
  for(const c of root.children)visit(c,[]);
+ // Draw the aerial photograph explicitly over PowerPoint's opaque white slide
+ // background. The original <use href="#img1"> is deeply nested in clipped
+ // transformed groups and was not reliably painted in the public view.
+ const photoSource=root.querySelector("defs image#img1");
+ if(photoSource){
+  const href=photoSource.getAttributeNS("http://www.w3.org/1999/xlink","href")||photoSource.getAttribute("href");
+  const use=[...root.querySelectorAll("use")].find(n=>(n.getAttribute("href")||n.getAttributeNS("http://www.w3.org/1999/xlink","href"))==="#img1");
+  if(href&&use){
+   const chain=[];for(let n=use;n&&n!==root;n=n.parentElement)if(n.hasAttribute("transform"))chain.unshift(n.getAttribute("transform"));
+   let matrix=new DOMMatrix();for(const transform of chain)matrix=matrix.multiply(new DOMMatrix(transform));
+   const width=Number(photoSource.getAttribute("width"))||1149,height=Number(photoSource.getAttribute("height"))||928;
+   const rect=svgEl("image",{width,height,preserveAspectRatio:"none"});
+   rect.setAttribute("href",href);rect.setAttribute("transform",matrix.toString());map.append(rect);
+  }
+ }
  // Hide configuration markup; movement remains aligned in the same coordinates.
  for(const k of ["lane","route","boundary","signal"])for(const n of parts[k])n.setAttribute("visibility","hidden");
  try{const b=map.getBBox();if(b.width>0&&b.height>0){const pad=Math.max(b.width,b.height)*.04;svg.setAttribute("viewBox",[b.x-pad,b.y-pad,b.width+2*pad,b.height+2*pad].join(" "));}}catch{}
