@@ -1,7 +1,8 @@
 import {VEHICLE_TYPES,advanceVehicle} from "./vehicle-dynamics.js?v=2.3";
+import {createSignalController} from "./signal-controller.js?v=2.4";
 const ns="http://www.w3.org/2000/svg",svg=document.getElementById("scene"),$=id=>document.getElementById(id);
 const map=$("map"),photoMap=$("photo-map"),markings=$("markings"),carsLayer=$("vehicles"),lights=$("lights");
-let tracks=[],cars=[],passed=0,running=false,clock=0,spawnClock=0,last=0,phase=0,nextId=1,signals=[];
+let tracks=[],cars=[],passed=0,running=false,clock=0,spawnClock=0,last=0,phase=0,nextId=1,signals=[],controller=null;
 function svgEl(name,attrs={}){const e=document.createElementNS(ns,name);for(const [k,v]of Object.entries(attrs))e.setAttribute(k,String(v));return e;}
 function category(el){const style=el.getAttribute("style")||"";const stroke=(el.getAttribute("stroke")||(style.match(/stroke:\s*([^;]+)/)||[])[1]||"").toLowerCase(),fill=(el.getAttribute("fill")||(style.match(/fill:\s*([^;]+)/)||[])[1]||"").toLowerCase();const c=stroke&&stroke!=="none"?stroke:fill;if(["#fff","#ffffff"].includes(c))return"markings";if(["#61cbf4","#37b5ed"].includes(c))return"lane";if(["#ffc000","#f59e0b"].includes(c))return"route";if(["#7030a0","#a855f7"].includes(c))return"boundary";if(["#00b050","#22c55e"].includes(c)||stroke==="#042433"&&fill==="#00b050")return"signal";return"map";}
 function readSvg(xml){
@@ -191,10 +192,10 @@ function spawn(){
  const truck=Math.random()<.09,spec=truck?VEHICLE_TYPES.truck:VEHICLE_TYPES.car;const g=svgEl("g"),body=svgEl("rect",{x:truck?-17:-12,y:truck?-6:-5,width:truck?34:24,height:truck?12:10,rx:2,fill:truck?"#f0c673":["#fff5bf","#e14e5a","#61b9ef","#9ee08e"][Math.floor(Math.random()*4)],stroke:"#172536","stroke-width":1.5});
  g.append(body);carsLayer.append(g);cars.push({id:nextId++,track:t,s:0,v:spec.cruise,length:spec.length,spec,el:g});
 }
-function lightIsGreen(signal){return signals[phase]===signal&&clock%14<11;}
+function lightIsGreen(signal){return controller?.state(signal)==="green";}
 function animate(now){
  if(!last)last=now;const real=Math.min(.05,(now-last)/1000);last=now;
- if(running){const dt=real*Number($("speed").value);clock+=dt;phase=Math.floor(clock/14)%signals.length;spawnClock+=dt;const interval=2.6/Number($("rate").value)*6;
+ if(running){const dt=real*Number($("speed").value);clock+=dt;controller.tick(dt,active=>cars.some(c=>active.includes(c.track.signal)&&c.s>=c.track.stopAt&&c.s<c.track.exitStart+c.length));spawnClock+=dt;const interval=2.6/Number($("rate").value)*6;
  while(spawnClock>=interval){spawnClock-=interval;spawn();}
  // Take one consistent snapshot so all vehicles react to the same traffic state.
  const snapshots=cars.map(c=>({...c}));
@@ -225,8 +226,8 @@ function animate(now){
  }
  cars=cars.filter(c=>{if(c.s<c.track.length)return true;c.el.remove();passed++;return false;});
  }
- $("phase").textContent=signals[phase]||"—";$("count").textContent=cars.length;$("passed").textContent=passed;
- lights.replaceChildren();for(const [i,s]of signals.entries()){const g=svgEl("g",{transform:`translate(${22+i*75} 25)`});g.append(svgEl("circle",{r:8,fill:lightIsGreen(s)?"#31e779":"#ff5050",stroke:"#fff","stroke-width":1}));const t=svgEl("text",{x:12,y:5,fill:"#fff","font-size":15});t.textContent=s;g.append(t);lights.append(g);}
+ const stage=controller?.status();$("phase").textContent=stage?("Fáze "+stage.stage+" · "+stage.mode+" · "+stage.green.join(", ")):"—";$("count").textContent=cars.length;$("passed").textContent=passed;
+ lights.replaceChildren();for(const [i,s]of signals.entries()){const g=svgEl("g",{transform:`translate(${22+i*75} 25)`});g.append(svgEl("circle",{r:8,fill:controller.state(s)==="green"?"#31e779":controller.state(s)==="yellow"?"#ffcc45":controller.state(s)==="red-yellow"?"#ff9850":"#ff5050",stroke:"#fff","stroke-width":1}));const t=svgEl("text",{x:12,y:5,fill:"#fff","font-size":15});t.textContent=s;g.append(t);lights.append(g);}
  requestAnimationFrame(animate);
 }
 async function init(){
@@ -235,10 +236,13 @@ async function init(){
  const network=makeRoadNetwork(parts,data.directions);
  tracks=(data.movements?.movements||[]).filter(m=>m.confirmed).map(m=>makeTrack(network,m)).filter(Boolean);
  signals=[...new Set(tracks.map(t=>t.signal))];if(!signals.length||!tracks.length)throw Error("Chybí potvrzené průjezdy nebo směry");
+ const plan=data.signalPlan;
+ if(!plan||plan.stages.some(stage=>stage.green.some(signal=>!signals.includes(signal))))throw Error("Chybí platný fázový plán projektu");
+ controller=createSignalController(plan);
  $("state").textContent="Připraveno: "+tracks.length+" průjezdů";
  $("start").onclick=()=>{running=true;$("state").textContent="Simulace běží";};
  $("pause").onclick=()=>{running=false;$("state").textContent="Pozastaveno";};
- $("reset").onclick=()=>{for(const c of cars)c.el.remove();cars=[];clock=0;phase=0;passed=0;spawnClock=0;running=true;$("state").textContent="Simulace běží";};
+ $("reset").onclick=()=>{for(const c of cars)c.el.remove();cars=[];clock=0;phase=0;controller.reset();passed=0;spawnClock=0;running=true;$("state").textContent="Simulace běží";};
  for(const id of ["speed","rate"])$(id).oninput=()=>$(id+"-value").textContent=$(id).value+(id==="speed"?"×":"");
  requestAnimationFrame(animate);
 }
