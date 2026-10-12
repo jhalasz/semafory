@@ -11,7 +11,7 @@ const ns="http://www.w3.org/2000/svg";
 const keys=[["photo","Původní fotomapa","#64748b"],["beautified","Upravená mapa","#39a78e"],["markings","Vodorovné značení","#fff"],["lanes","Logické jízdní pruhy","#61cbf4"],["routes","Trajektorie","#ffc000"],["entry","Řídicí hranice","#7030a0"],["signals","Semafory","#00b050"],["other","Ostatní objekty","#aaa"]];
 const scene=document.getElementById("scene"),ph=document.getElementById("placeholder"),status=document.getElementById("status"),note=document.getElementById("diagnostic"),input=document.getElementById("photo");
 const el=k=>document.getElementById(k+"-layer");
-let fileUrl=null,sourceSvg=null,projectId=null,loading=false,saveTimer=null,beautifiedMap=null,fullViewBox=null;
+let fileUrl=null,sourceSvg=null,projectId=null,loading=false,saveTimer=null,beautifiedMap=null,fullViewBox=null,signalPlan=null;
 for(const [key,label,color] of keys){
  const row=document.createElement("div");row.className="layer";
  const check=document.createElement("input");check.type="checkbox";check.checked=true;
@@ -155,7 +155,14 @@ document.getElementById("svg-update").addEventListener("change",async e=>{
   try{
    // Rebuild renderers and then restore the same confirmed identifiers.
    // Keeping the original project ID prevents creating another project.
-   await loadProject({...backup,svg:{name:f.name,content:xml}});
+   await loadProject({...backup,svg:{name:f.name,content:xml}},{skipSave:true});
+   // Atomicity: the old movement configuration must survive byte-for-byte.
+   // Reject reconstruction that changes any confirmed binding or stage.
+   if(JSON.stringify(movements?.export())!==JSON.stringify(backup.movements)||
+      JSON.stringify(directions?.export())!==JSON.stringify(backup.directions)){
+    throw Error("Při obnově došlo ke změně potvrzených průjezdů nebo směrů. Původní projekt bude obnoven; nic se nepřepíše.");
+   }
+   await saveProject();
    const currentConnections=connections?.export()||[];
    const previousConnections=backup.connections||[];
    const lost=previousConnections.filter(old=>!currentConnections.some(now=>now.routeEndpoint===old.routeEndpoint));
@@ -204,7 +211,7 @@ const projectNotice=document.getElementById("project-status");
 function showProjectStatus(message){projectNotice.textContent=message;}
 function snapshot(){
  if(!sourceSvg)return null;
- return {format:"semafory-project",version:1,id:projectId||crypto.randomUUID(),name:document.getElementById("project-name").value.trim()||status.textContent,updated:new Date().toISOString(),svg:{name:status.textContent,content:sourceSvg},directions:directions?.export()||null,connections:connections?.export()||[],controls:controls?.export()||null,movements:movements?.export()||null,conflicts:conflicts?.export()||null,driverRisk:driverRisk.export(),beautifiedMap,visibility:Object.fromEntries(keys.map(([k])=>[k,el(k).getAttribute("visibility")!=="hidden"]))};
+ return {format:"semafory-project",version:1,id:projectId||crypto.randomUUID(),name:document.getElementById("project-name").value.trim()||status.textContent,updated:new Date().toISOString(),svg:{name:status.textContent,content:sourceSvg},directions:directions?.export()||null,connections:connections?.export()||[],controls:controls?.export()||null,movements:movements?.export()||null,conflicts:conflicts?.export()||null,driverRisk:driverRisk.export(),signalPlan,beautifiedMap,visibility:Object.fromEntries(keys.map(([k])=>[k,el(k).getAttribute("visibility")!=="hidden"]))};
 }
 async function saveProject(){
  if(loading)return;
@@ -229,11 +236,11 @@ async function listProjects(){
  }catch(e){console.warn("GitHub seznam není dostupný",e);}
  list.value=current;
 }
-async function loadProject(data){
+async function loadProject(data,{skipSave=false}={}){
  if(data.format!=="semafory-project"||!data.svg?.content)throw Error("Projekt neobsahuje SVG. Otevři úplný projekt.");
  loading=true;
  try{
-  projectId=data.id||crypto.randomUUID();
+  projectId=data.id||crypto.randomUUID();signalPlan=data.signalPlan||null;
   document.getElementById("project-name").value=data.name||"";
   svgImport(data.svg.content,data.svg.name||data.name||"Projekt");
   directions?.restore(data.directions);
@@ -255,7 +262,7 @@ async function loadProject(data){
   if(useBeautified)el("photo").setAttribute("visibility","hidden");
   showProjectStatus("Otevřen projekt: "+(data.name||"bez názvu"));
  }finally{loading=false;}
- await saveProject();
+ if(!skipSave)await saveProject();
 }
 document.getElementById("project-save").onclick=()=>saveProject();
 document.getElementById("project-name").addEventListener("change",()=>saveProject());
