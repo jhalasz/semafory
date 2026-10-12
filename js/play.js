@@ -2,7 +2,7 @@ import {VEHICLE_TYPES,advanceVehicle} from "./vehicle-dynamics.js?v=2.3";
 import {createSignalController} from "./signal-controller.js?v=2.4";
 const ns="http://www.w3.org/2000/svg",svg=document.getElementById("scene"),$=id=>document.getElementById(id);
 const map=$("map"),photoMap=$("photo-map"),markings=$("markings"),carsLayer=$("vehicles"),lights=$("lights");
-let tracks=[],cars=[],passed=0,running=false,clock=0,spawnClock=0,last=0,phase=0,nextId=1,signals=[],controller=null;
+let tracks=[],cars=[],passed=0,running=false,clock=0,spawnClock=0,last=0,phase=0,nextId=1,signals=[],controller=null,signalLocations=[];
 function svgEl(name,attrs={}){const e=document.createElementNS(ns,name);for(const [k,v]of Object.entries(attrs))e.setAttribute(k,String(v));return e;}
 function category(el){const style=el.getAttribute("style")||"";const stroke=(el.getAttribute("stroke")||(style.match(/stroke:\s*([^;]+)/)||[])[1]||"").toLowerCase(),fill=(el.getAttribute("fill")||(style.match(/fill:\s*([^;]+)/)||[])[1]||"").toLowerCase();const c=stroke&&stroke!=="none"?stroke:fill;if(["#fff","#ffffff"].includes(c))return"markings";if(["#61cbf4","#37b5ed"].includes(c))return"lane";if(["#ffc000","#f59e0b"].includes(c))return"route";if(["#7030a0","#a855f7"].includes(c))return"boundary";if(["#00b050","#22c55e"].includes(c)||stroke==="#042433"&&fill==="#00b050")return"signal";return"map";}
 function readSvg(xml){
@@ -192,6 +192,30 @@ function spawn(){
  const truck=Math.random()<.09,spec=truck?VEHICLE_TYPES.truck:VEHICLE_TYPES.car;const g=svgEl("g"),body=svgEl("rect",{x:truck?-17:-12,y:truck?-6:-5,width:truck?34:24,height:truck?12:10,rx:2,fill:truck?"#f0c673":["#fff5bf","#e14e5a","#61b9ef","#9ee08e"][Math.floor(Math.random()*4)],stroke:"#172536","stroke-width":1.5});
  g.append(body);carsLayer.append(g);cars.push({id:nextId++,track:t,s:0,v:spec.cruise,length:spec.length,spec,el:g});
 }
+function locateSignals(parts){
+ // Signal marker order is the canonical S01, S02 ... identifier order.
+ // The group transforms are accounted for in SVG screen-to-viewBox coordinates.
+ const inverse=svg.getScreenCTM().inverse();
+ return parts.signal.map((node,i)=>{
+  const box=node.getBBox(),center=new DOMPoint(box.x+box.width/2,box.y+box.height/2);
+  const point=center.matrixTransform(inverse.multiply(node.getScreenCTM()));
+  return {id:"S"+String(i+1).padStart(2,"0"),x:point.x,y:point.y};
+ });
+}
+function renderSignalLights(){
+ lights.replaceChildren();
+ for(const loc of signalLocations){
+  const state=controller.state(loc.id);
+  const g=svgEl("g",{transform:`translate(${loc.x} ${loc.y})`});
+  const body=svgEl("rect",{x:-8,y:-21,width:16,height:42,rx:4,fill:"#18202a",stroke:"#e4edf7","stroke-width":1.4});
+  g.append(body);
+  for(const [y,color,active] of [[-13,"#f43f46",state==="red"||state==="red-yellow"],[0,"#ffbf37",state==="yellow"||state==="red-yellow"],[13,"#2bdf64",state==="green"]]){
+   g.append(svgEl("circle",{cx:0,cy:y,r:5.3,fill:active?color:"#343940",stroke:"#111820","stroke-width":.7}));
+  }
+  const title=svgEl("title");title.textContent=loc.id+" – "+state;g.append(title);
+  lights.append(g);
+ }
+}
 function lightIsGreen(signal){return controller?.state(signal)==="green";}
 function animate(now){
  if(!last)last=now;const real=Math.min(.05,(now-last)/1000);last=now;
@@ -227,18 +251,20 @@ function animate(now){
  cars=cars.filter(c=>{if(c.s<c.track.length)return true;c.el.remove();passed++;return false;});
  }
  const stage=controller?.status();$("phase").textContent=stage?("Fáze "+stage.stage+" · "+stage.mode+" · "+stage.green.join(", ")):"—";$("count").textContent=cars.length;$("passed").textContent=passed;
- lights.replaceChildren();for(const [i,s]of signals.entries()){const g=svgEl("g",{transform:`translate(${22+i*75} 25)`});g.append(svgEl("circle",{r:8,fill:controller.state(s)==="green"?"#31e779":controller.state(s)==="yellow"?"#ffcc45":controller.state(s)==="red-yellow"?"#ff9850":"#ff5050",stroke:"#fff","stroke-width":1}));const t=svgEl("text",{x:12,y:5,fill:"#fff","font-size":15});t.textContent=s;g.append(t);lights.append(g);}
+ renderSignalLights();
  requestAnimationFrame(animate);
 }
 async function init(){
  const response=await fetch("./projects/massag-4.json",{cache:"no-store"});if(!response.ok)throw Error("Veřejný projekt není dostupný");
  const data=await response.json(),parts=readSvg(data.svg.content);
+ signalLocations=locateSignals(parts);
  const network=makeRoadNetwork(parts,data.directions);
  tracks=(data.movements?.movements||[]).filter(m=>m.confirmed).map(m=>makeTrack(network,m)).filter(Boolean);
  signals=[...new Set(tracks.map(t=>t.signal))];if(!signals.length||!tracks.length)throw Error("Chybí potvrzené průjezdy nebo směry");
  const plan=data.signalPlan;
  if(!plan||plan.stages.some(stage=>stage.green.some(signal=>!signals.includes(signal))))throw Error("Chybí platný fázový plán projektu");
  controller=createSignalController(plan);
+ if(signals.some(id=>!signalLocations.some(loc=>loc.id===id)))throw Error("V SVG chybí pozice potvrzeného semaforu");
  $("state").textContent="Připraveno: "+tracks.length+" průjezdů";
  $("start").onclick=()=>{running=true;$("state").textContent="Simulace běží";};
  $("pause").onclick=()=>{running=false;$("state").textContent="Pozastaveno";};
