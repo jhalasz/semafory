@@ -1,4 +1,4 @@
-import {createControlEditor} from "./control-editor.js?v=1.8";
+import {createControlEditor} from "./control-editor.js?v=1.8.1";
 import {projectStore} from "./project-store.js?v=1.7";
 import {createDirectionEditor} from "./directions.js?v=1.6";
 import {createConnectionEditor} from "./connection-editor.js?v=1.6";
@@ -233,4 +233,9 @@ document.getElementById("show-original-map").addEventListener("change",e=>{
  el("photo").setAttribute("visibility",e.target.checked?"visible":"hidden");
  if(e.target.checked){el("beautified").setAttribute("visibility","hidden");document.getElementById("show-beautified-map").checked=false;}
  scene.dispatchEvent(new Event("semafory:project-changed"));
+});
+
+const directionsToggle=document.getElementById("show-directions");
+directionsToggle.addEventListener("change",()=>{
+ document.getElementById("directions-layer").setAttribute("visibility",directionsToggle.checked?"visible":"hidden");
 });
