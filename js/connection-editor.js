@@ -96,9 +96,9 @@ export function createConnectionEditor(scene,host,tolerancePercent=1.2){
    title.addEventListener("click",()=>selectConnection(p));item.append(title);
    if(p.status!=="missing"&&p.status!=="exact"){
    const yes=document.createElement("button");yes.type="button";yes.textContent="Potvrdit";yes.disabled=p.decision==="accepted";
-   yes.addEventListener("click",()=>{p.decision="accepted";redraw();});
+   yes.addEventListener("click",()=>{p.decision="accepted";redraw();scene.dispatchEvent(new Event("semafory:project-changed"));});
    const no=document.createElement("button");no.type="button";no.textContent="Odmítnout";no.disabled=p.decision==="rejected";
-   no.addEventListener("click",()=>{p.decision="rejected";redraw();});
+   no.addEventListener("click",()=>{p.decision="rejected";redraw();scene.dispatchEvent(new Event("semafory:project-changed"));});
    item.append(yes,no);}
    list.append(item);
   }
@@ -107,6 +107,7 @@ export function createConnectionEditor(scene,host,tolerancePercent=1.2){
  }
  redraw();
  return {
+  restore(saved){if(!Array.isArray(saved))return;for(const old of saved){const p=proposals.find(x=>x.id===old.routeEndpoint&&x.best&&dist(x.r.p,old.from)<2&&dist(x.best.l.p,old.to)<2);if(p)p.decision="accepted";}redraw();},
   export(){
    return proposals.filter(p=>p.decision==="accepted"&&p.best).map(p=>({
     routeEndpoint:p.id,routeSide:p.r.side,laneSide:p.best.l.side,
