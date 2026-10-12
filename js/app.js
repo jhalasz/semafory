@@ -94,6 +94,69 @@ function svgImport(xml,name){
  /*  try{controls=createControlEditor(scene,document.getElementById("control-editor"),()=>directions?.export());}
  catch(error){document.getElementById("control-report").textContent="Chyba řídicích vazeb: "+error.message;console.error(error);} */
 }
+// Compare ordered logical elements, preserving P/T/H/S identifiers tied to SVG order.
+// Reject structural changes rather than silently assigning old settings to new paths.
+function svgStructure(xml){
+ const doc=new DOMParser().parseFromString(xml,"image/svg+xml");
+ if(doc.querySelector("parsererror")||doc.documentElement.localName!=="svg")throw Error("Soubor není platné SVG.");
+ const grouped={lanes:[],routes:[],entry:[],signals:[]};
+ function visit(node){
+  if(["defs","clipPath"].includes(node.localName))return;
+  if(node.localName==="g"){for(const child of node.children)visit(child);return;}
+  const k=category(node);
+  if(k in grouped)grouped[k].push({
+   tag:node.localName,
+   geometry:node.getAttribute("d")||[node.getAttribute("x1"),node.getAttribute("y1"),node.getAttribute("x2"),node.getAttribute("y2"),node.getAttribute("cx"),node.getAttribute("cy"),node.getAttribute("points")].join("|"),
+   transform:[...function*(n){while(n&&n!==doc.documentElement){if(n.hasAttribute("transform"))yield n.getAttribute("transform");n=n.parentElement;}}(node)].reverse().join("|")
+  });
+ }
+ for(const child of doc.documentElement.children)visit(child);
+ return grouped;
+}
+function svgUpdateDiff(oldXml,newXml){
+ const old=svgStructure(oldXml),next=svgStructure(newXml);
+ const labels={lanes:"jízdních pruhů",routes:"trajektorií",entry:"řídicích hranic",signals:"semaforů"};
+ const changes={};
+ for(const k of Object.keys(old)){
+  if(old[k].length!==next[k].length)throw Error("Počet "+labels[k]+" se změnil ("+old[k].length+" → "+next[k].length+"). Bezpečné převzetí nastavení není možné.");
+  if(old[k].some((x,i)=>x.tag!==next[k][i].tag))throw Error("Pořadí nebo typ prvků ve vrstvě "+labels[k]+" se změnily.");
+  changes[k]=old[k].flatMap((x,i)=>(x.geometry===next[k][i].geometry&&x.transform===next[k][i].transform)?[]:[i+1]);
+ }
+ // Changed numbering is safe only when the editor's confirmation is explicit;
+ // by default protect lanes, stop lines and signals from unintentional replacement.
+ if(changes.lanes.length||changes.entry.length||changes.signals.length)throw Error("Změnily se také pruhy, hranice nebo semafory. Pro zachování jejich vazeb je potřeba samostatná kontrola.");
+ if(changes.routes.length>1)throw Error("Změněno více trajektorií ("+changes.routes.length+"). Tato bezpečná aktualizace dovoluje jednu opravenou křivku najednou.");
+ return {changes,count:old.routes.length};
+}
+function downloadBackup(data){
+ const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
+ const url=URL.createObjectURL(blob),a=document.createElement("a");
+ a.href=url;a.download=(data.name||"projekt").replace(/[^a-zA-Z0-9_-]/g,"_")+"_pred_zmenou_"+new Date().toISOString().slice(0,10)+".semafory.json";
+ a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+document.getElementById("svg-update").addEventListener("change",async e=>{
+ const f=e.target.files[0];e.target.value="";if(!f)return;
+ const backup=snapshot();
+ if(!backup){showProjectStatus("Nejdříve otevři existující projekt.");return;}
+ try{
+  const xml=await f.text();
+  const {changes}=svgUpdateDiff(backup.svg.content,xml);
+  const ids=changes.routes.map(i=>"T"+String(i).padStart(2,"0"));
+  const summary=ids.length?"Změněná trajektorie: "+ids.join(", "):"Nebyly nalezeny změny geometrie trajektorií";
+  if(!confirm(summary+".\n\nZachovat směry, napojení, řízené průjezdy a ostatní nastavení? Před výměnou se stáhne úplná záloha projektu."))return;
+  downloadBackup(backup);
+  try{
+   // Rebuild renderers and then restore the same confirmed identifiers.
+   // Keeping the original project ID prevents creating another project.
+   await loadProject({...backup,svg:{name:f.name,content:xml}});
+   showProjectStatus("SVG aktualizováno ("+summary+"). Nastavení zachována. Záloha stažena.");
+  }catch(err){
+   await loadProject(backup);
+   throw err;
+  }
+ }catch(err){showProjectStatus("SVG nebylo změněno: "+err.message);}
+});
+
 input.onchange=async()=>{
  const f=input.files[0];input.value="";if(!f)return;
  status.textContent="Načítám: "+f.name;
