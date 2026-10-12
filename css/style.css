@@ -14,3 +14,15 @@ input[type=file]{display:block;width:100%;margin:.7rem 0}button{border:1px solid
 .connection-select{width:100%;text-align:left;background:transparent;border:0;font-weight:600;padding:5px;color:#e7edf6}.connection-item.selected{background:#29466b;border-left:3px solid #60a5fa;padding-left:5px}.connection-item .connection-select{flex-basis:100%}#reset-connection-zoom{width:100%;margin-top:8px}#connections-layer{pointer-events:all}#connections-layer g:focus{outline:none}#connections-layer g:focus circle:first-child{stroke:#ffffff;stroke-width:4}
 
 .direction-list{max-height:320px;overflow:auto}.direction-item{display:flex;gap:5px;flex-wrap:wrap;border-bottom:1px solid #415168;padding:5px 0}.direction-item.selected{border-left:3px solid #60a5fa;padding-left:5px;background:#29466b}.direction-item button{font-size:12px;padding:5px}.direction-item button:first-child{flex-basis:100%;text-align:left}#export-directions{width:100%}
+
+/* Desktop workspace: independent settings scroll; map stays in viewport. */
+@media (min-width:721px){
+ html,body{height:100%;overflow:hidden}
+ body{display:flex;flex-direction:column;height:100dvh}
+ header{flex:0 0 auto}
+ main{flex:1 1 auto;min-height:0;height:auto;overflow:hidden;grid-template-rows:minmax(0,1fr)}
+ main > aside.panel{min-height:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable}
+ main > .workspace{min-height:0;overflow:hidden}
+ .workspace .viewport{min-height:0;flex:1 1 auto}
+ #scene{max-height:100%;height:auto}
+}
