@@ -1,4 +1,4 @@
-import {createDirectionEditor} from "./directions.js?v=1.5";
+import {createDirectionEditor} from "./directions.js?v=1.5.1";
 import {createConnectionEditor} from "./connection-editor.js?v=1.4.2";
 let connections=null,directions=null;
 const ns="http://www.w3.org/2000/svg";
