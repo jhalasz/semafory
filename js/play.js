@@ -1,3 +1,4 @@
+import {VEHICLE_TYPES,advanceVehicle} from "./vehicle-dynamics.js?v=2.3";
 const ns="http://www.w3.org/2000/svg",svg=document.getElementById("scene"),$=id=>document.getElementById(id);
 const map=$("map"),photoMap=$("photo-map"),markings=$("markings"),carsLayer=$("vehicles"),lights=$("lights");
 let tracks=[],cars=[],passed=0,running=false,clock=0,spawnClock=0,last=0,phase=0,nextId=1,signals=[];
@@ -107,34 +108,39 @@ function spawn(){
  if(!tracks.length||cars.length>90)return;
  const t=tracks[Math.floor(Math.random()*tracks.length)];
  if(cars.some(c=>c.track.entryLane===t.entryLane&&c.s<65))return;
- const truck=Math.random()<.09;const g=svgEl("g"),body=svgEl("rect",{x:truck?-17:-12,y:truck?-6:-5,width:truck?34:24,height:truck?12:10,rx:2,fill:truck?"#f0c673":["#fff5bf","#e14e5a","#61b9ef","#9ee08e"][Math.floor(Math.random()*4)],stroke:"#172536","stroke-width":1.5});
- g.append(body);carsLayer.append(g);cars.push({id:nextId++,track:t,s:0,v:truck?31:42,length:truck?34:24,el:g});
+ const truck=Math.random()<.09,spec=truck?VEHICLE_TYPES.truck:VEHICLE_TYPES.car;const g=svgEl("g"),body=svgEl("rect",{x:truck?-17:-12,y:truck?-6:-5,width:truck?34:24,height:truck?12:10,rx:2,fill:truck?"#f0c673":["#fff5bf","#e14e5a","#61b9ef","#9ee08e"][Math.floor(Math.random()*4)],stroke:"#172536","stroke-width":1.5});
+ g.append(body);carsLayer.append(g);cars.push({id:nextId++,track:t,s:0,v:spec.cruise,length:spec.length,spec,el:g});
 }
 function lightIsGreen(signal){return signals[phase]===signal&&clock%14<11;}
 function animate(now){
  if(!last)last=now;const real=Math.min(.05,(now-last)/1000);last=now;
  if(running){const dt=real*Number($("speed").value);clock+=dt;phase=Math.floor(clock/14)%signals.length;spawnClock+=dt;const interval=2.6/Number($("rate").value)*6;
  while(spawnClock>=interval){spawnClock-=interval;spawn();}
+ // Take one consistent snapshot so all vehicles react to the same traffic state.
+ const snapshots=cars.map(c=>({...c}));
  for(const car of cars){
-  // One physical queue per shared lane, regardless of the chosen turn.
-  // Compare longitudinal progress on the shared incoming/outgoing lane.
-  let free=Infinity;
-  for(const other of cars){
-   if(other===car)continue;
+  let obstacle=null;
+  for(const other of snapshots){
+   if(other.id===car.id)continue;
    let delta=Infinity;
-   if(other.track===car.track&&other.s>=car.s)delta=other.s-car.s;
+   if(other.track===car.track&&other.s>car.s)delta=other.s-car.s;
    if(car.track.entryLane===other.track.entryLane&&car.s<=car.track.entryEnd){
-    if(other.s>=car.s&&other.s<=other.track.entryEnd+other.length)delta=Math.min(delta,other.s-car.s);
+    if(other.s>car.s&&other.s<=other.track.entryEnd+other.length)delta=Math.min(delta,other.s-car.s);
    }
    if(car.track.exitLane===other.track.exitLane&&car.s>=car.track.exitStart-35){
     const otherExit=other.s-other.track.exitStart;
     const ourExit=car.s-car.track.exitStart;
-    if(otherExit>=ourExit&&otherExit>-other.length)delta=Math.min(delta,otherExit-ourExit);
+    if(otherExit>ourExit&&otherExit>-other.length)delta=Math.min(delta,otherExit-ourExit);
    }
-   free=Math.min(free,delta-(other.length+car.length)/2-7);
+   const gap=delta-(other.length+car.length)/2;
+   if(Number.isFinite(gap)&&(!obstacle||gap<obstacle.gap))obstacle={gap,v:other.v};
   }
-  if(!lightIsGreen(car.track.signal)&&car.s<car.track.stopAt)free=Math.min(free,car.track.stopAt-car.s);
-  const desired=Math.max(0,Math.min(45,free*1.2));car.v=Math.max(0,Math.min(45,car.v+(car.v<desired?26:-72)*dt));car.s+=Math.min(car.v*dt,Math.max(0,free));
+  // A red signal acts like a stationary lead vehicle at the stop line.
+  if(!lightIsGreen(car.track.signal)&&car.s<car.track.stopAt){
+   const gap=car.track.stopAt-car.s;
+   if(!obstacle||gap<obstacle.gap)obstacle={gap,v:0};
+  }
+  advanceVehicle(car,obstacle,dt);
   const p=position(car.track,car.s);car.el.setAttribute("transform",`translate(${p.x} ${p.y}) rotate(${p.angle})`);
  }
  cars=cars.filter(c=>{if(c.s<c.track.length)return true;c.el.remove();passed++;return false;});
