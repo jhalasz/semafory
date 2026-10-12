@@ -9,7 +9,10 @@ function paths(group,svg,prefix){
    const start=pointToRoot(el,svg,el.getPointAtLength(0));
    const end=pointToRoot(el,svg,el.getPointAtLength(length));
    if(!start||!end)continue;
-   out.push({id:prefix+String(++n).padStart(2,"0"),start,end,el,direction:0,confirmed:false});
+   const midpoint=pointToRoot(el,svg,el.getPointAtLength(length*.5));
+   const before=pointToRoot(el,svg,el.getPointAtLength(length*.46));
+   const after=pointToRoot(el,svg,el.getPointAtLength(length*.54));
+   out.push({id:prefix+String(++n).padStart(2,"0"),start,end,midpoint,before,after,el,direction:0,confirmed:false});
   }catch(e){}
  }
  return out;
@@ -33,7 +36,7 @@ export function createDirectionEditor(svg,container){
   selected=item.id;
   svg.dispatchEvent(new CustomEvent("semafory:direction-selected"));
   const bounds=baseView.trim().split(/[\s,]+/).map(Number);
-  const center={x:(item.start.x+item.end.x)/2,y:(item.start.y+item.end.y)/2};
+  const center=item.midpoint;
   const w=bounds[2]/2.1,h=bounds[3]/2.1;
   svg.setAttribute("viewBox",[center.x-w/2,center.y-h/2,w,h].join(" "));
   render();
@@ -43,15 +46,26 @@ export function createDirectionEditor(svg,container){
   for(const item of all){
    const forward=item.direction!==-1;
    const from=forward?item.start:item.end,to=forward?item.end:item.start;
-   const mid={x:(item.start.x+item.end.x)/2,y:(item.start.y+item.end.y)/2};
-   const dx=to.x-from.x,dy=to.y-from.y,mag=Math.hypot(dx,dy)||1;
+   const mid=item.midpoint;
+   const tangent=item.direction===-1?{x:item.before.x-item.after.x,y:item.before.y-item.after.y}:{x:item.after.x-item.before.x,y:item.after.y-item.before.y};
+   const dx=tangent.x,dy=tangent.y,mag=Math.hypot(dx,dy)||1;
    const ux=dx/mag,uy=dy/mag;
    const color=item.confirmed?"#22c55e":item.direction===0?"#eab308":"#60a5fa";
+   if(selected===item.id){
+    const elementMatrix=svg.getScreenCTM().inverse().multiply(item.el.getScreenCTM());
+    const transform="matrix("+[elementMatrix.a,elementMatrix.b,elementMatrix.c,elementMatrix.d,elementMatrix.e,elementMatrix.f].join(" ")+")";
+    const copy=item.el.cloneNode(true);
+    copy.removeAttribute("id");copy.setAttribute("transform",transform);
+    copy.setAttribute("stroke","#00ff88");copy.setAttribute("stroke-width","7");
+    copy.setAttribute("fill","none");copy.setAttribute("opacity","0.9");
+    copy.setAttribute("vector-effect","non-scaling-stroke");
+    layer.append(copy);
+   }
    const marker=shape("g",{cursor:"pointer",role:"button",tabindex:0,"aria-label":"Vybrat "+item.id},layer);
    const p=shape("path",{d:"M "+(mid.x-ux*11)+" "+(mid.y-uy*11)+" L "+(mid.x+ux*11)+" "+(mid.y+uy*11)+" M "+(mid.x+ux*11)+" "+(mid.y+uy*11)+" L "+(mid.x+ux*4-uy*5)+" "+(mid.y+uy*4+ux*5)+" M "+(mid.x+ux*11)+" "+(mid.y+uy*11)+" L "+(mid.x+ux*4+uy*5)+" "+(mid.y+uy*4-ux*5),fill:"none",stroke:color,"stroke-width":selected===item.id?5:3,"vector-effect":"non-scaling-stroke"},marker);
    shape("circle",{cx:mid.x,cy:mid.y,r:16,fill:"transparent"},marker);
    const badge=shape("g",{cursor:"pointer"},layer);
-   const bx=mid.x+25,by=mid.y-24;
+   const bx=mid.x-uy*21,by=mid.y+ux*21;
    shape("line",{x1:mid.x,y1:mid.y,x2:bx,y2:by,stroke:color,"stroke-width":1.5,"stroke-dasharray":"3 3","pointer-events":"none"},badge);
    shape("circle",{cx:bx,cy:by,r:14,fill:"#172338",stroke:color,"stroke-width":selected===item.id?3:2},badge);
    const tag=shape("text",{x:bx,y:by+4,"text-anchor":"middle","font-size":10,"font-weight":"bold",fill:"#ffffff","pointer-events":"none"},badge);tag.textContent=item.id;
