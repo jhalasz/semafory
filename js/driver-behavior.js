@@ -1,4 +1,5 @@
 // Universal, simulation-time-independent stochastic decisions.
+// Only red-light running and failure-to-yield can be random violations.
 // An event ID is sampled only once for each vehicle and manoeuvre.
 export class DriverRiskModel {
  constructor({annualCrashes=0,annualVehicles=1,ruleViolationMultiplier=100,seed=17}={}){
@@ -12,7 +13,8 @@ export class DriverRiskModel {
  random(){this.seed=(Math.imul(1664525,this.seed)+1013904223)>>>0;return this.seed/4294967296;}
  get crashTargetPerTraversal(){return Math.min(.999,this.annualCrashes/this.annualVehicles);}
  get violationProbability(){return Math.min(.25,this.crashTargetPerTraversal*this.ruleViolationMultiplier);}
- decide(vehicleId,eventId,eventType="generic"){
+ decide(vehicleId,eventId,eventType="red-light"){
+  if(!["red-light","failure-to-yield"].includes(eventType))return false;
   const key=String(vehicleId)+":"+String(eventId)+":"+String(eventType);
   if(!this.decisions.has(key))this.decisions.set(key,this.random()<this.violationProbability);
   return this.decisions.get(key);
