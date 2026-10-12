@@ -131,28 +131,40 @@ function makeRoadNetwork(parts,directions){
 }
 function joinPointsSmoothly(previous,next){
  if(!previous.length)return next;
+ if(next.length<2)return next;
  const last=previous[previous.length-1],first=next[0];
- const gap=Math.hypot(last.x-first.x,last.y-first.y);
- if(gap>50)return null;
- // If the new path starts slightly *behind* the previous end point,
- // trim only the backwards part of the outgoing segment.
- let start=0;
- if(next.length>=3){
-  const q=next[Math.min(4,next.length-1)],dx=q.x-first.x,dy=q.y-first.y;
-  const backwards=(last.x-first.x)*dx+(last.y-first.y)*dy>0;
-  if(backwards){
-   for(let i=1;i<next.length;i++){
-    if((next[i].x-last.x)*dx+(next[i].y-last.y)*dy>=0){start=i;break;}
-   }
-  }
+ if(Math.hypot(last.x-first.x,last.y-first.y)>50)return null;
+ // Join on the *forward* part of the outgoing path. Never drive backwards
+ // to its nominal start, even when two authoring paths overlap by a few px.
+ const probe=next[Math.min(5,next.length-1)];
+ const tx=probe.x-first.x,ty=probe.y-first.y,mag=Math.hypot(tx,ty);
+ if(mag<0.001)return next.slice(1);
+ const ux=tx/mag,uy=ty/mag;
+ const along=(p)=>(p.x-last.x)*ux+(p.y-last.y)*uy;
+ let start=next.findIndex(p=>along(p)>=0.5);
+ if(start<0)return [];
+ // If the last authored point lies slightly ahead of the start of the next
+ // path, choose the first forward point rather than visiting the overlap.
+ const trimmed=next.slice(start);
+ if(!trimmed.length)return [];
+ const target=trimmed[0],dx=target.x-last.x,dy=target.y-last.y;
+ const gap=Math.hypot(dx,dy);
+ if(gap<0.05)return trimmed.slice(1);
+ // A short smooth connection, never reversing the longitudinal direction.
+ // The control points use the incoming and outgoing tangents.
+ const prev=previous[Math.max(0,previous.length-4)];
+ let vx=last.x-prev.x,vy=last.y-prev.y;
+ const vmag=Math.hypot(vx,vy)||1;vx/=vmag;vy/=vmag;
+ const reach=Math.min(gap*.3,4),steps=Math.max(2,Math.ceil(gap/2));
+ const bridge=[];
+ for(let i=1;i<=steps;i++){
+  const t=i/steps,a=1-t;
+  bridge.push({
+   x:a*a*a*last.x+3*a*a*t*(last.x+vx*reach)+3*a*t*t*(target.x-ux*reach)+t*t*t*target.x,
+   y:a*a*a*last.y+3*a*a*t*(last.y+vy*reach)+3*a*t*t*(target.y-uy*reach)+t*t*t*target.y
+  });
  }
- const adjusted=next.slice(start);
- if(!adjusted.length)return [];
- const distance=Math.hypot(last.x-adjusted[0].x,last.y-adjusted[0].y);
- if(distance<0.05)return adjusted.slice(1);
- const n=Math.max(1,Math.ceil(distance/2)),bridge=[];
- for(let i=1;i<=n;i++){const f=i/n;bridge.push({x:last.x+(adjusted[0].x-last.x)*f,y:last.y+(adjusted[0].y-last.y)*f});}
- return bridge.concat(adjusted.slice(1));
+ return bridge.concat(trimmed.slice(1));
 }
 function makeTrack(network,movement){
  const combined=[];let approach=0,exitStart=0;
