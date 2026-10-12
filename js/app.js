@@ -141,6 +141,13 @@ document.getElementById("svg-update").addEventListener("change",async e=>{
  try{
   const xml=await f.text();
   const {changes}=svgUpdateDiff(backup.svg.content,xml);
+  if(!changes.routes.length){
+   const exact=backup.svg.content===xml;
+   showProjectStatus(exact
+    ?"Nové SVG je obsahově úplně stejné jako SVG v otevřeném projektu. Zkontroluj, zda jsi exportoval opravený soubor, případně zda už nebyl dříve načten."
+    :"SVG se změnilo, ale žádná z potvrzených trajektorií T01–T06 se nezměnila. Zkontroluj, že opravená křivka má oranžovou barvu trajektorie a že je součástí správného SVG. Projekt jsem neměnil.");
+   return;
+  }
   const ids=changes.routes.map(i=>"T"+String(i).padStart(2,"0"));
   const summary=ids.length?"Změněná trajektorie: "+ids.join(", "):"Nebyly nalezeny změny geometrie trajektorií";
   if(!confirm(summary+".\n\nZachovat směry, napojení, řízené průjezdy a ostatní nastavení? Před výměnou se stáhne úplná záloha projektu."))return;
