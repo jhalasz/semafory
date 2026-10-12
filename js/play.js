@@ -1,5 +1,5 @@
 import {VEHICLE_TYPES,advanceVehicle} from "./vehicle-dynamics.js?v=2.3";
-import {createSignalController} from "./signal-controller.js?v=2.4";
+import {createSignalController} from "./signal-controller.js?v=2.4.2";
 const ns="http://www.w3.org/2000/svg",svg=document.getElementById("scene"),$=id=>document.getElementById(id);
 const map=$("map"),photoMap=$("photo-map"),markings=$("markings"),carsLayer=$("vehicles"),lights=$("lights");
 let tracks=[],cars=[],passed=0,running=false,clock=0,spawnClock=0,last=0,phase=0,nextId=1,signals=[],controller=null,signalLocations=[];
