@@ -107,12 +107,25 @@ function joinPointsSmoothly(previous,next){
  const last=previous[previous.length-1],first=next[0];
  const gap=Math.hypot(last.x-first.x,last.y-first.y);
  if(gap>50)return null;
- // Preserve exact SVG geometry. For small discrepancies, insert an
- // interpolated connector rather than skipping the start of the next path.
- if(gap<0.05)return next.slice(1);
- const n=Math.max(1,Math.ceil(gap/2)),bridge=[];
- for(let i=1;i<=n;i++){const f=i/n;bridge.push({x:last.x+(first.x-last.x)*f,y:last.y+(first.y-last.y)*f});}
- return bridge.concat(next.slice(1));
+ // If the new path starts slightly *behind* the previous end point,
+ // trim only the backwards part of the outgoing segment.
+ let start=0;
+ if(next.length>=3){
+  const q=next[Math.min(4,next.length-1)],dx=q.x-first.x,dy=q.y-first.y;
+  const backwards=(last.x-first.x)*dx+(last.y-first.y)*dy>0;
+  if(backwards){
+   for(let i=1;i<next.length;i++){
+    if((next[i].x-last.x)*dx+(next[i].y-last.y)*dy>=0){start=i;break;}
+   }
+  }
+ }
+ const adjusted=next.slice(start);
+ if(!adjusted.length)return [];
+ const distance=Math.hypot(last.x-adjusted[0].x,last.y-adjusted[0].y);
+ if(distance<0.05)return adjusted.slice(1);
+ const n=Math.max(1,Math.ceil(distance/2)),bridge=[];
+ for(let i=1;i<=n;i++){const f=i/n;bridge.push({x:last.x+(adjusted[0].x-last.x)*f,y:last.y+(adjusted[0].y-last.y)*f});}
+ return bridge.concat(adjusted.slice(1));
 }
 function makeTrack(parts,directions,movement){
  const shape=id=>{const index=Number(id.slice(1))-1;return id[0]==="P"?parts.lane[index]:parts.route[index];};
