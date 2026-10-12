@@ -1,3 +1,4 @@
+import {DriverRiskModel} from "./driver-behavior.js?v=2.1";
 import {createConflictEditor} from "./conflict-editor.js?v=2.0";
 import {createMovementEditor} from "./movement-editor.js?v=1.9";
 import {createControlEditor} from "./control-editor.js?v=1.8.2";
@@ -5,6 +6,7 @@ import {projectStore} from "./project-store.js?v=1.7";
 import {createDirectionEditor} from "./directions.js?v=1.6";
 import {createConnectionEditor} from "./connection-editor.js?v=1.6";
 let connections=null,directions=null,controls=null,movements=null,conflicts=null;
+const driverRisk=new DriverRiskModel();
 const ns="http://www.w3.org/2000/svg";
 const keys=[["photo","Původní fotomapa","#64748b"],["beautified","Upravená mapa","#39a78e"],["markings","Vodorovné značení","#fff"],["lanes","Logické jízdní pruhy","#61cbf4"],["routes","Trajektorie","#ffc000"],["entry","Řídicí hranice","#7030a0"],["signals","Semafory","#00b050"],["other","Ostatní objekty","#aaa"]];
 const scene=document.getElementById("scene"),ph=document.getElementById("placeholder"),status=document.getElementById("status"),note=document.getElementById("diagnostic"),input=document.getElementById("photo");
@@ -126,7 +128,7 @@ const projectNotice=document.getElementById("project-status");
 function showProjectStatus(message){projectNotice.textContent=message;}
 function snapshot(){
  if(!sourceSvg)return null;
- return {format:"semafory-project",version:1,id:projectId||crypto.randomUUID(),name:document.getElementById("project-name").value.trim()||status.textContent,updated:new Date().toISOString(),svg:{name:status.textContent,content:sourceSvg},directions:directions?.export()||null,connections:connections?.export()||[],controls:controls?.export()||null,movements:movements?.export()||null,conflicts:conflicts?.export()||null,beautifiedMap,visibility:Object.fromEntries(keys.map(([k])=>[k,el(k).getAttribute("visibility")!=="hidden"]))};
+ return {format:"semafory-project",version:1,id:projectId||crypto.randomUUID(),name:document.getElementById("project-name").value.trim()||status.textContent,updated:new Date().toISOString(),svg:{name:status.textContent,content:sourceSvg},directions:directions?.export()||null,connections:connections?.export()||[],controls:controls?.export()||null,movements:movements?.export()||null,conflicts:conflicts?.export()||null,driverRisk:driverRisk.export(),beautifiedMap,visibility:Object.fromEntries(keys.map(([k])=>[k,el(k).getAttribute("visibility")!=="hidden"]))};
 }
 async function saveProject(){
  if(loading)return;
@@ -164,6 +166,8 @@ async function loadProject(data){
   movements?.restore(data.movements);
   conflicts?.restore(data.conflicts);
   conflicts?.refresh();
+  if(data.driverRisk){driverRisk.configure(data.driverRisk);for(const [id,k] of [["risk-crashes","annualCrashes"],["risk-vehicles","annualVehicles"],["risk-multiplier","ruleViolationMultiplier"]])document.getElementById(id).value=data.driverRisk[k];}
+  updateRiskSummary();
   setBeautifiedMap(data.beautifiedMap||null);
   fullButton.disabled=false;
   for(const [key,visible] of Object.entries(data.visibility||{})){
@@ -250,3 +254,10 @@ const directionsToggle=document.getElementById("show-directions");
 directionsToggle.addEventListener("change",()=>{
  document.getElementById("directions-layer").setAttribute("visibility",directionsToggle.checked?"visible":"hidden");
 });
+
+function updateRiskSummary(){
+ driverRisk.configure({annualCrashes:document.getElementById("risk-crashes").value,annualVehicles:document.getElementById("risk-vehicles").value,ruleViolationMultiplier:document.getElementById("risk-multiplier").value});
+ document.getElementById("risk-summary").textContent="Cíl nehod na průjezd: "+(100*driverRisk.crashTargetPerTraversal).toFixed(5)+" % · modelová pravděpodobnost porušení na jednu událost: "+(100*driverRisk.violationProbability).toFixed(4)+" %. Parametry jsou orientační, bez kalibrace na konkrétní místo a období.";
+}
+for(const id of ["risk-crashes","risk-vehicles","risk-multiplier"])document.getElementById(id).addEventListener("change",()=>{updateRiskSummary();scene.dispatchEvent(new Event("semafory:project-changed"));});
+updateRiskSummary();
