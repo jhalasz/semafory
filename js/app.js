@@ -1,11 +1,12 @@
-import {createDirectionEditor} from "./directions.js?v=1.5.1";
-import {createConnectionEditor} from "./connection-editor.js?v=1.4.2";
+import {projectStore} from "./project-store.js?v=1.6";
+import {createDirectionEditor} from "./directions.js?v=1.6";
+import {createConnectionEditor} from "./connection-editor.js?v=1.6";
 let connections=null,directions=null;
 const ns="http://www.w3.org/2000/svg";
 const keys=[["photo","Původní fotomapa","#64748b"],["beautified","Upravená mapa","#39a78e"],["markings","Vodorovné značení","#fff"],["lanes","Logické jízdní pruhy","#61cbf4"],["routes","Trajektorie","#ffc000"],["entry","Řídicí hranice","#7030a0"],["signals","Semafory","#00b050"],["other","Ostatní objekty","#aaa"]];
 const scene=document.getElementById("scene"),ph=document.getElementById("placeholder"),status=document.getElementById("status"),note=document.getElementById("diagnostic"),input=document.getElementById("photo");
 const el=k=>document.getElementById(k+"-layer");
-let fileUrl=null;
+let fileUrl=null,sourceSvg=null,projectId=null,loading=false,saveTimer=null;
 for(const [key,label,color] of keys){
  const row=document.createElement("div");row.className="layer";
  const check=document.createElement("input");check.type="checkbox";check.checked=true;
@@ -60,6 +61,7 @@ function svgImport(xml,name){
    scene.style.aspectRatio=(box.width+2*pad)+"/"+(box.height+2*pad);
   }
  }catch(err){console.warn("Nelze vypočítat rozměry fotografie",err);}
+ sourceSvg=xml;
  ph.setAttribute("visibility","hidden");status.textContent=name;
  note.textContent="Import dokončen. "+keys.map(([k,n])=>n+": "+(count[k]||0)).join("; ");
  try{
@@ -82,7 +84,7 @@ input.onchange=async()=>{
  status.textContent="Načítám: "+f.name;
  note.textContent="Probíhá import souboru…";
  try{
-  if(f.name.toLowerCase().endsWith(".svg"))svgImport(await f.text(),f.name);
+  if(f.name.toLowerCase().endsWith(".svg")){projectId=crypto.randomUUID();document.getElementById("project-name").value=f.name.replace(/\.svg$/i,"");svgImport(await f.text(),f.name);await saveProject();}
   else{
    const url=URL.createObjectURL(f),img=new Image();
    await new Promise((ok,no)=>{img.onload=ok;img.onerror=no;img.src=url;});
@@ -93,7 +95,7 @@ input.onchange=async()=>{
   }
  }catch(e){status.textContent="Chyba importu";note.textContent="Import se nezdařil: "+e.message;console.error("Chyba importu SVG",e);}
 };
-document.getElementById("reset").onclick=()=>{clear();input.value="";if(fileUrl)URL.revokeObjectURL(fileUrl);fileUrl=null;ph.setAttribute("visibility","visible");status.textContent="Čeká na podklad";note.textContent="";};
+document.getElementById("reset").onclick=()=>{sourceSvg=null;projectId=null;clear();input.value="";if(fileUrl)URL.revokeObjectURL(fileUrl);fileUrl=null;ph.setAttribute("visibility","visible");status.textContent="Čeká na podklad";note.textContent="";};
 
 document.getElementById("show-connections").addEventListener("change",e=>document.getElementById("connections-layer").setAttribute("visibility",e.target.checked?"visible":"hidden"));
 
@@ -106,3 +108,80 @@ document.getElementById("export-directions").addEventListener("click",()=>{
  const anchor=document.createElement("a");anchor.href=url;anchor.download="semafory-smery.json";anchor.click();
  setTimeout(()=>URL.revokeObjectURL(url),1000);
 });
+
+const projectNotice=document.getElementById("project-status");
+function showProjectStatus(message){projectNotice.textContent=message;}
+function snapshot(){
+ if(!sourceSvg)return null;
+ return {format:"semafory-project",version:1,id:projectId||crypto.randomUUID(),name:document.getElementById("project-name").value.trim()||status.textContent,updated:new Date().toISOString(),svg:{name:status.textContent,content:sourceSvg},directions:directions?.export()||null,connections:connections?.export()||[],visibility:Object.fromEntries(keys.map(([k])=>[k,el(k).getAttribute("visibility")!=="hidden"]))};
+}
+async function saveProject(){
+ if(loading)return;
+ const data=snapshot();if(!data)return;
+ projectId=data.id;
+ try{await projectStore.save(data);showProjectStatus("Uloženo v tomto prohlížeči: "+new Date().toLocaleTimeString("cs-CZ"));await listProjects();}
+ catch(e){showProjectStatus("Automatické uložení selhalo: "+e.message);}
+}
+async function listProjects(){
+ const list=document.getElementById("project-list"),current=list.value;
+ list.replaceChildren(new Option("Vyber uložený projekt…",""));
+ try{
+  const local=await projectStore.list();
+  for(const p of local)list.add(new Option(p.name+" (místní · "+new Date(p.updated).toLocaleDateString("cs-CZ")+")","local:"+p.id));
+ }catch(e){showProjectStatus("Místní seznam: "+e.message);}
+ try{
+  const response=await fetch("./projects/index.json",{cache:"no-store"});
+  if(response.ok){
+   const data=await response.json();
+   for(const p of data.projects||[])list.add(new Option(p.name+" (GitHub)","github:"+p.file));
+  }
+ }catch(e){console.warn("GitHub seznam není dostupný",e);}
+ list.value=current;
+}
+async function loadProject(data){
+ if(data.format!=="semafory-project"||!data.svg?.content)throw Error("Projekt neobsahuje SVG. Otevři úplný projekt.");
+ loading=true;
+ try{
+  projectId=data.id||crypto.randomUUID();
+  document.getElementById("project-name").value=data.name||"";
+  svgImport(data.svg.content,data.svg.name||data.name||"Projekt");
+  directions?.restore(data.directions);
+  connections?.restore(data.connections);
+  for(const [key,visible] of Object.entries(data.visibility||{})){
+   if(keys.some(([k])=>k===key))el(key).setAttribute("visibility",visible?"visible":"hidden");
+  }
+  showProjectStatus("Otevřen projekt: "+(data.name||"bez názvu"));
+ }finally{loading=false;}
+ await saveProject();
+}
+document.getElementById("project-save").onclick=()=>saveProject();
+document.getElementById("project-name").addEventListener("change",()=>saveProject());
+scene.addEventListener("semafory:project-changed",()=>{
+ clearTimeout(saveTimer);saveTimer=setTimeout(()=>saveProject(),500);
+});
+document.getElementById("project-open").onclick=async()=>{
+ const value=document.getElementById("project-list").value;if(!value)return;
+ try{
+  let data;
+  if(value.startsWith("local:"))data=await projectStore.get(value.slice(6));
+  else if(value.startsWith("github:")){
+   const file=value.slice(7);
+   if(!/^[-a-zA-Z0-9_/]+\.json$/.test(file)||file.includes(".."))throw Error("Neplatná cesta projektu");
+   const response=await fetch("./projects/"+file,{cache:"no-store"});
+   if(!response.ok)throw Error("GitHub projekt nebyl nalezen");
+   data=await response.json();
+  }
+  await loadProject(data);
+ }catch(e){showProjectStatus("Nelze otevřít projekt: "+e.message);}
+};
+document.getElementById("project-export").onclick=()=>{
+ const data=snapshot();if(!data){showProjectStatus("Nejdříve otevři projekt.");return;}
+ const url=URL.createObjectURL(new Blob([JSON.stringify(data)],{type:"application/json"}));
+ const a=document.createElement("a");a.href=url;a.download=(data.name||"krizovatka").replace(/[^a-zA-Z0-9_-]/g,"_")+".semafory.json";a.click();
+ setTimeout(()=>URL.revokeObjectURL(url),1000);
+};
+document.getElementById("project-import").addEventListener("change",async e=>{
+ const f=e.target.files[0];e.target.value="";if(!f)return;
+ try{await loadProject(JSON.parse(await f.text()));}catch(err){showProjectStatus("Import selhal: "+err.message);}
+});
+listProjects();
