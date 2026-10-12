@@ -15,7 +15,18 @@ function readSvg(xml){
   if(el.localName==="g"){for(const c of el.children)visit(c,[...parents,el]);return;}
   if(!["path","line","polyline","circle","ellipse","polygon","image","rect","use","text"].includes(el.localName))return;
   const kind=category(el);let dest=kind==="markings"?markings:map;
-  const node=document.importNode(el,true);
+  // PowerPoint stores the real aerial photograph as a <use> of a JPEG held
+  // in <defs>. Inline that JPEG directly: linked SVG images are unreliable
+  // when cloned into a different document and can leave a white map.
+  const href=el.getAttribute("href")||el.getAttributeNS("http://www.w3.org/1999/xlink","href")||"";
+  const sourcePhoto=href==="#img1"?root.querySelector("defs image#img1"):null;
+  const node=document.importNode(sourcePhoto||el,true);
+  if(sourcePhoto){
+   node.removeAttribute("id");
+   if(el.hasAttribute("transform"))node.setAttribute("transform",el.getAttribute("transform"));
+   const imageHref=sourcePhoto.getAttributeNS("http://www.w3.org/1999/xlink","href")||sourcePhoto.getAttribute("href");
+   if(imageHref)node.setAttribute("href",imageHref);
+  }
   for(const p of parents){const g=svgEl("g");for(const a of p.attributes)if(["transform","opacity","clip-path"].includes(a.name))g.setAttribute(a.name,a.value);dest.append(g);dest=g;}
   dest.append(node);
   if(parts[kind]&&["path","line","polyline","circle","ellipse"].includes(el.localName))parts[kind].push(node);
