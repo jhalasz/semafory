@@ -26,3 +26,5 @@ input[type=file]{display:block;width:100%;margin:.7rem 0}button{border:1px solid
  .workspace .viewport{min-height:0;flex:1 1 auto}
  #scene{max-height:100%;height:auto}
 }
+
+.movement-list{display:flex;flex-direction:column;gap:8px;margin-top:10px}.movement-item{display:flex;flex-direction:column;gap:6px;border-bottom:1px solid #45536a;padding:7px 0}.movement-item.selected{border-left:3px solid #fbbf24;padding-left:6px}.movement-field{font-size:12px;display:flex;flex-direction:column;gap:4px}.movement-field select{max-width:100%;padding:6px;color:inherit;background:#28384c;border:1px solid #68788c;border-radius:4px}
