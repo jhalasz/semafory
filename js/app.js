@@ -119,7 +119,7 @@ async function saveProject(){
  if(loading)return;
  const data=snapshot();if(!data)return;
  projectId=data.id;
- try{await projectStore.save(data);showProjectStatus("Uloženo v tomto prohlížeči: "+new Date().toLocaleTimeString("cs-CZ"));await listProjects();}
+ try{await projectStore.save(data);localStorage.setItem("semafory-last-project",projectId);showProjectStatus("Uloženo v tomto prohlížeči: "+new Date().toLocaleTimeString("cs-CZ"));await listProjects();}
  catch(e){showProjectStatus("Automatické uložení selhalo: "+e.message);}
 }
 async function listProjects(){
@@ -184,4 +184,4 @@ document.getElementById("project-import").addEventListener("change",async e=>{
  const f=e.target.files[0];e.target.value="";if(!f)return;
  try{await loadProject(JSON.parse(await f.text()));}catch(err){showProjectStatus("Import selhal: "+err.message);}
 });
-listProjects();
+(async()=>{await listProjects();try{const id=localStorage.getItem("semafory-last-project");if(id){const saved=await projectStore.get(id);if(saved)await loadProject(saved);}}catch(e){showProjectStatus("Obnovení posledního projektu: "+e.message);}})();
