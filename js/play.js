@@ -88,16 +88,17 @@ function samplePath(el,reverse=false){
 function makeTrack(parts,directions,movement){
  const shape=id=>{const index=Number(id.slice(1))-1;return id[0]==="P"?parts.lane[index]:parts.route[index];};
  const ds=new Map((directions?.items||[]).filter(d=>d.confirmed).map(d=>[d.id,d.direction]));
- const combined=[];let approach=0;
+ const combined=[];let approach=0,exitStart=0;
  for(const id of [movement.entryLane,movement.id,movement.exitLane]){
   const el=shape(id);if(!el||!ds.has(id))return null;
   const points=samplePath(el,ds.get(id)==="end-to-start");
   if(combined.length&&Math.hypot(combined.at(-1).x-points[0].x,combined.at(-1).y-points[0].y)>50)return null;
   if(id===movement.id)approach=combined.length?combined.reduce((acc,p,i,a)=>i?acc+Math.hypot(p.x-a[i-1].x,p.y-a[i-1].y):0,0):0;
+  if(id===movement.exitLane)exitStart=combined.length?combined.reduce((acc,p,i,a)=>i?acc+Math.hypot(p.x-a[i-1].x,p.y-a[i-1].y):0,0):0;
   combined.push(...(combined.length?points.slice(1):points));
  }
  const cumulative=[0];for(let i=1;i<combined.length;i++)cumulative.push(cumulative.at(-1)+Math.hypot(combined[i].x-combined[i-1].x,combined[i].y-combined[i-1].y));
- return{id:movement.id,entryLane:movement.entryLane,signal:movement.signal,points:combined,dist:cumulative,length:cumulative.at(-1),stopAt:approach-12};
+ return{id:movement.id,entryLane:movement.entryLane,exitLane:movement.exitLane,entryEnd:approach,exitStart,signal:movement.signal,points:combined,dist:cumulative,length:cumulative.at(-1),stopAt:approach-12};
 }
 function position(t,s){
  s=Math.max(0,Math.min(t.length,s));let lo=0,hi=t.dist.length-1;while(lo+1<hi){const mid=(lo+hi)>>1;if(t.dist[mid]<s)lo=mid;else hi=mid;}const a=t.points[lo],b=t.points[hi],f=(s-t.dist[lo])/(t.dist[hi]-t.dist[lo]||1);return{x:a.x+(b.x-a.x)*f,y:a.y+(b.y-a.y)*f,angle:Math.atan2(b.y-a.y,b.x-a.x)*180/Math.PI};
@@ -115,8 +116,23 @@ function animate(now){
  if(running){const dt=real*Number($("speed").value);clock+=dt;phase=Math.floor(clock/14)%signals.length;spawnClock+=dt;const interval=2.6/Number($("rate").value)*6;
  while(spawnClock>=interval){spawnClock-=interval;spawn();}
  for(const car of cars){
-  const others=cars.filter(o=>o!==car&&o.track===car.track&&o.s>=car.s).sort((a,b)=>a.s-b.s);
-  const ahead=others[0];let free=ahead?ahead.s-car.s-(ahead.length+car.length)/2-7:Infinity;
+  // One physical queue per shared lane, regardless of the chosen turn.
+  // Compare longitudinal progress on the shared incoming/outgoing lane.
+  let free=Infinity;
+  for(const other of cars){
+   if(other===car)continue;
+   let delta=Infinity;
+   if(other.track===car.track&&other.s>=car.s)delta=other.s-car.s;
+   if(car.track.entryLane===other.track.entryLane&&car.s<=car.track.entryEnd){
+    if(other.s>=car.s)delta=Math.min(delta,other.s-car.s);
+   }
+   if(car.track.exitLane===other.track.exitLane&&car.s>=car.track.exitStart-35){
+    const otherExit=other.s-other.track.exitStart;
+    const ourExit=car.s-car.track.exitStart;
+    if(otherExit>=ourExit&&otherExit>-other.length)delta=Math.min(delta,otherExit-ourExit);
+   }
+   free=Math.min(free,delta-(other.length+car.length)/2-7);
+  }
   if(!lightIsGreen(car.track.signal)&&car.s<car.track.stopAt)free=Math.min(free,car.track.stopAt-car.s);
   const desired=Math.max(0,Math.min(45,free*1.2));car.v=Math.max(0,Math.min(45,car.v+(car.v<desired?26:-72)*dt));car.s+=Math.min(car.v*dt,Math.max(0,free));
   const p=position(car.track,car.s);car.el.setAttribute("transform",`translate(${p.x} ${p.y}) rotate(${p.angle})`);
