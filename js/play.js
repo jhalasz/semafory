@@ -80,6 +80,33 @@ function readSvg(xml){
  try{const b=map.getBBox();if(b.width>0&&b.height>0){const pad=Math.max(b.width,b.height)*.04;svg.setAttribute("viewBox",[b.x-pad,b.y-pad,b.width+2*pad,b.height+2*pad].join(" "));}}catch{}
  return parts;
 }
+// Repair oversized Bezier control-point excursions in a working copy only.
+// The SVG saved in the intersection project is left intact.
+function correctedPath(el){
+ if(el.localName!=="path")return el;
+ const d=el.getAttribute("d")||"";
+ const m=d.match(/^(\s*M\s*)([-+\d.eE]+)[ ,]+([-+\d.eE]+)(\s*C\s*)([-+\d.eE]+)[ ,]+([-+\d.eE]+)[ ,]+([-+\d.eE]+)[ ,]+([-+\d.eE]+)[ ,]+([-+\d.eE]+)[ ,]+([-+\d.eE]+)/);
+ if(!m)return el;
+ let [x0,y0,c1x,c1y,c2x,c2y,x1,y1]=[m[2],m[3],m[5],m[6],m[7],m[8],m[9],m[10]].map(Number);
+ const adjust=(start,end,a,b)=>{
+  const span=end-start,lo=Math.min(start,end),hi=Math.max(start,end);
+  const overshoot=Math.max(lo-a,a-hi,lo-b,b-hi,0);
+  if(Math.abs(span)<12||overshoot<Math.max(12,Math.abs(span)*.3))return[a,b];
+  // The first segment must progress in its own direction, without
+  // reversing just because an authored control point lies far beyond it.
+  return[start+span/3,start+2*span/3];
+ };
+ [c1x,c2x]=adjust(x0,x1,c1x,c2x);
+ [c1y,c2y]=adjust(y0,y1,c1y,c2y);
+ if(c1x===Number(m[5])&&c1y===Number(m[6])&&c2x===Number(m[7])&&c2y===Number(m[8]))return el;
+ const clone=el.cloneNode(true);
+ const corrected=m[1]+m[2]+" "+m[3]+m[4]+[c1x,c1y,c2x,c2y,x1,y1].join(" ");
+ clone.setAttribute("d",corrected+d.slice(m[0].length));
+ // Retain the original ancestor CTM by replacing the hidden authoring path
+ // in place, so sampling and vehicle positions remain in the same system.
+ el.replaceWith(clone);
+ return clone;
+}
 function samplePath(el,reverse=false){
  const len=el.getTotalLength(),n=Math.max(8,Math.ceil(len/5));const p=[];
  const matrix=svg.getScreenCTM().inverse().multiply(el.getScreenCTM());
@@ -122,7 +149,7 @@ function makeRoadNetwork(parts,directions){
   if(!direction.has(id))return null;
   const el=id[0]==="P"?parts.lane[Number(id.slice(1))-1]:parts.route[Number(id.slice(1))-1];
   if(!el)return null;
-  let points=samplePath(el,direction.get(id)==="end-to-start");
+  let points=samplePath(correctedPath(el),direction.get(id)==="end-to-start");
   if(entry)points=extendToRoadEdge(points,bounds);
   segments.set(key,points);
   return points;
