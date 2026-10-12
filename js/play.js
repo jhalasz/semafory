@@ -92,8 +92,8 @@ function samplePath(el,reverse=false){
 // that segment along its existing tangent to the border, not per movement.
 function roadBounds(parts){
  const points=parts.lane.flatMap(el=>{
-  const n=el.getTotalLength();return[el.getPointAtLength(0),el.getPointAtLength(n)];
- }).map(p=>({x:p.x,y:p.y}));
+  const p=samplePath(el);return[p[0],p[p.length-1]];
+ });
  return {left:Math.min(...points.map(p=>p.x)),right:Math.max(...points.map(p=>p.x)),top:Math.min(...points.map(p=>p.y)),bottom:Math.max(...points.map(p=>p.y))};
 }
 function extendToRoadEdge(points,bounds){
