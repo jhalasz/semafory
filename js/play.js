@@ -188,7 +188,7 @@ function position(t,s){
 function spawn(){
  if(!tracks.length||cars.length>90)return;
  const t=tracks[Math.floor(Math.random()*tracks.length)];
- if(cars.some(c=>c.track.entryLane===t.entryLane&&c.s<65))return;
+ if(cars.some(c=>c.track.entryLane===t.entryLane&&c.s-c.length/2<65))return;
  const truck=Math.random()<.09,spec=truck?VEHICLE_TYPES.truck:VEHICLE_TYPES.car;const g=svgEl("g"),body=svgEl("rect",{x:truck?-17:-12,y:truck?-6:-5,width:truck?34:24,height:truck?12:10,rx:2,fill:truck?"#f0c673":["#fff5bf","#e14e5a","#61b9ef","#9ee08e"][Math.floor(Math.random()*4)],stroke:"#172536","stroke-width":1.5});
  g.append(body);carsLayer.append(g);cars.push({id:nextId++,track:t,s:0,v:spec.cruise,length:spec.length,spec,el:g});
 }
@@ -238,8 +238,13 @@ function animate(now){
    if(other.id===car.id)continue;
    let delta=Infinity;
    if(other.track===car.track&&other.s>car.s)delta=other.s-car.s;
-   if(car.track.entryLane===other.track.entryLane&&car.s<=car.track.entryEnd){
-    if(other.s>car.s&&other.s<=other.track.entryEnd+other.length)delta=Math.min(delta,other.s-car.s);
+   // One queue per physical entry lane, independent of the future turn.
+   // The leading vehicle owns the shared lane until its REAR bumper
+   // has cleared the branching point; a follower must not pass it.
+   if(car.track.entryLane===other.track.entryLane&&car.s<=car.track.entryEnd+car.length/2){
+    const split=Math.min(car.track.entryEnd,other.track.entryEnd);
+    const leaderRear=other.s-other.length/2;
+    if(other.s>car.s&&leaderRear<split+4)delta=Math.min(delta,other.s-car.s);
    }
    if(car.track.exitLane===other.track.exitLane&&car.s>=car.track.exitStart-35){
     const otherExit=other.s-other.track.exitStart;
