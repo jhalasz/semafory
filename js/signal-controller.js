@@ -15,7 +15,7 @@ export function createSignalController(config){
   return {...s,green:[...green]};
  });
  // Every signal in an interlocked group must have exactly one common state.
- let stage=0,mode="green",elapsed=0;
+ let stage=0,mode="green",elapsed=0,manual=true,requested=null;
  const greenSeconds=s=>Math.max(2,Number(s.greenSeconds)||12);
  const yellowSeconds=Math.max(1,Number(config.yellowSeconds)||3);
  const redYellowSeconds=Math.max(1,Number(config.redYellowSeconds)||2);
@@ -34,7 +34,7 @@ export function createSignalController(config){
  function tick(dt,hasVehicleInside){
   let remaining=Math.max(0,dt);
   while(remaining>0){
-   const duration=mode==="green"?greenSeconds(expanded[stage]):mode==="yellow"?yellowSeconds:mode==="all-red"?allRedSeconds:redYellowSeconds;
+   const duration=mode==="green"?(manual?(requested===null?Infinity:0):greenSeconds(expanded[stage])):mode==="yellow"?yellowSeconds:mode==="all-red"?allRedSeconds:redYellowSeconds;
    const advance=Math.min(remaining,Math.max(0,duration-elapsed));
    elapsed+=advance;remaining-=advance;
    if(elapsed+1e-9<duration)break;
@@ -44,10 +44,20 @@ export function createSignalController(config){
     // Wait for exiting vehicles, without counting waiting time towards the
     // red/yellow stage. The new stage may only start on an empty intersection.
     if(hasVehicleInside(expanded[stage].green))break;
-    stage=(stage+1)%stages.length;mode="red-yellow";elapsed=0;
+    stage=requested??((stage+1)%stages.length);requested=null;mode="red-yellow";elapsed=0;
    }
    else{mode="green";elapsed=0;}
   }
  }
- return {state,tick,reset(){stage=0;mode="green";elapsed=0;},status(){return {stage:stage+1,mode,green:[...expanded[stage].green],elapsed}}};
+ return {state,tick,
+  requestSignal(id){
+   const target=expanded.findIndex(s=>s.green.includes(id));
+   if(target<0)return false;
+   if(target===stage&&mode==="green")return false;
+   requested=target;return true;
+  },
+  setManual(value){manual=!!value;if(!manual)requested=null;},
+  reset(){stage=0;mode="green";elapsed=0;requested=null;},
+  status(){return {stage:stage+1,mode,green:[...expanded[stage].green],elapsed,manual,requested};}
+ };
 }
