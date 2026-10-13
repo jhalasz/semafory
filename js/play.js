@@ -78,7 +78,15 @@ function readSvg(xml){
  }
  // Hide configuration markup; movement remains aligned in the same coordinates.
  for(const k of ["lane","route","boundary","signal"])for(const n of parts[k])n.setAttribute("visibility","hidden");
- try{const b=map.getBBox();if(b.width>0&&b.height>0){const pad=Math.max(b.width,b.height)*.04;svg.setAttribute("viewBox",[b.x-pad,b.y-pad,b.width+2*pad,b.height+2*pad].join(" "));}}catch{}
+ try{
+  // Use the actual photograph bounds, not the wide PowerPoint slide.
+  // Keep the whole background visible and preserve its true aspect ratio.
+  const b=photoMap.children.length?photoMap.getBBox():map.getBBox();
+  if(b.width>0&&b.height>0){
+    svg.setAttribute("viewBox",[b.x,b.y,b.width,b.height].join(" "));
+    svg.style.aspectRatio=b.width+"/"+b.height;
+  }
+}catch{}
  return parts;
 }
 function samplePath(el,reverse=false){
