@@ -197,21 +197,29 @@ function makeTrack(network,movement){
  for(const id of [movement.entryLane,movement.id,movement.exitLane]){
   let points=network.segment(id,id===movement.entryLane);
   if(!points)return null;
-  // The two Opavska incoming lanes share one approach until the
-  // physical fork. Preserve both original authored downstream paths.
+  // Shared Opavska approach: T03 and T06 occupy precisely the same
+  // centreline until the lane fork; only then does T03 diverge to P07.
   if(movement.id==="T03"&&id===movement.entryLane){
    const common=network.segment("P01",true);
-   if(common){
-    const fork=points[0];
-    let nearest=0,best=Infinity;
-    for(let j=0;j<common.length;j++){
-     const d=Math.hypot(common[j].x-fork.x,common[j].y-fork.y);
-     if(d<best){best=d;nearest=j;}
-    }
-    if(best<45&&nearest>3){
-     const prefix=common.slice(0,nearest+1);
-     const transition=joinPointsSmoothly(prefix,points);
-     if(transition)points=prefix.concat(transition);
+   if(common&&points.length>1){
+    // Physical fork begins shortly after the left map edge.
+    const forkIndex=common.findIndex(p=>p.x>=330);
+    if(forkIndex>2){
+     const prefix=common.slice(0,forkIndex+1),start=prefix.at(-1),target=points[0];
+     const previous=prefix[Math.max(0,prefix.length-5)];
+     const vx=start.x-previous.x,vy=start.y-previous.y,vl=Math.hypot(vx,vy)||1;
+     const following=points[Math.min(5,points.length-1)];
+     const wx=following.x-target.x,wy=following.y-target.y,wl=Math.hypot(wx,wy)||1;
+     const reach=Math.min(48,Math.hypot(target.x-start.x)*.42);
+     const bridge=[];
+     for(let k=1;k<=36;k++){
+      const t=k/36,u=1-t;
+      bridge.push({
+       x:u*u*u*start.x+3*u*u*t*(start.x+vx/vl*reach)+3*u*t*t*(target.x-wx/wl*reach)+t*t*t*target.x,
+       y:u*u*u*start.y+3*u*u*t*(start.y+vy/vl*reach)+3*u*t*t*(target.y-wy/wl*reach)+t*t*t*target.y
+      });
+     }
+     points=prefix.concat(bridge,points.slice(1));
     }
    }
   }
