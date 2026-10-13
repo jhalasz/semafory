@@ -47,6 +47,22 @@ function readSvg(xml){
   if(["lane","route","boundary","signal"].includes(kind)||ref==="#img3")node.remove();
  }
  $("native-map").replaceChildren(nativeRoot);
+ // PowerPoint's slide clip truncates long white road lines. Redraw only
+ // white-stroked road markings without inherited slide clipping.
+ const freeMarkings=svgEl("g",{"data-overlay":"true","pointer-events":"none"});
+ for(const el of root.querySelectorAll("path,line,polyline")){
+  const stroke=(el.getAttribute("stroke")||((el.getAttribute("style")||"").match(/stroke:\\s*([^;]+)/)||[])[1]||"").trim().toLowerCase();
+  if(stroke!=="#fff"&&stroke!=="#ffffff"&&stroke!=="white")continue;
+  let node=document.importNode(el,true);
+  const ancestors=[];for(let p=el.parentElement;p&&p!==root;p=p.parentElement)if(p.localName==="g")ancestors.unshift(p);
+  for(let i=ancestors.length-1;i>=0;i--){
+   const p=ancestors[i],g=svgEl("g");
+   for(const attr of ["transform","opacity"])if(p.hasAttribute(attr))g.setAttribute(attr,p.getAttribute(attr));
+   g.append(node);node=g;
+  }
+  freeMarkings.append(node);
+ }
+ $("native-map").append(freeMarkings);
  map.setAttribute("visibility","hidden");markings.setAttribute("visibility","hidden");
 
  // Draw the aerial photograph explicitly over PowerPoint's opaque white slide
