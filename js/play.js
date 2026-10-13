@@ -228,6 +228,23 @@ function makeTrack(network,movement){
 function position(t,s){
  s=Math.max(0,Math.min(t.length,s));let lo=0,hi=t.dist.length-1;while(lo+1<hi){const mid=(lo+hi)>>1;if(t.dist[mid]<s)lo=mid;else hi=mid;}const a=t.points[lo],b=t.points[hi],f=(s-t.dist[lo])/(t.dist[hi]-t.dist[lo]||1);return{x:a.x+(b.x-a.x)*f,y:a.y+(b.y-a.y)*f,angle:Math.atan2(b.y-a.y,b.x-a.x)*180/Math.PI};
 }
+// Oriented rectangular vehicle footprints, including a small safety margin.
+function vehicleFootprint(car,margin=2){
+ const p=position(car.track,car.s),a=p.angle*Math.PI/180;
+ const ux=Math.cos(a),uy=Math.sin(a),vx=-uy,vy=ux;
+ const halfL=car.length/2+margin,halfW=(car.spec.width||10)/2+margin;
+ return {p,ux,uy,vx,vy,halfL,halfW};
+}
+function footprintClearance(a,b){
+ const dx=b.p.x-a.p.x,dy=b.p.y-a.p.y;
+ for(const [x,y] of [[a.ux,a.uy],[a.vx,a.vy],[b.ux,b.uy],[b.vx,b.vy]]){
+  const distance=Math.abs(dx*x+dy*y);
+  const ra=a.halfL*Math.abs(a.ux*x+a.uy*y)+a.halfW*Math.abs(a.vx*x+a.vy*y);
+  const rb=b.halfL*Math.abs(b.ux*x+b.uy*y)+b.halfW*Math.abs(b.vx*x+b.vy*y);
+  if(distance>ra+rb)return distance-ra-rb;
+ }
+ return 0;
+}
 function spawn(){
  if(!tracks.length||cars.length>90)return;
  const t=tracks[Math.floor(Math.random()*tracks.length)];
@@ -301,11 +318,11 @@ function animate(now){
     // Where lanes overlap at the fork, keep a spatial collision envelope.
     if(shared&&p.x>forkX-45&&p.x<forkX+65&&
        q.x>forkX-45&&q.x<forkX+65&&longitudinal>0){
-     const separation=Math.hypot(p.x-q.x,p.y-q.y);
-     const clearance=(car.length+other.length)/2+5;
-     if(separation<clearance+Math.max(0,car.v)*.65){
-      const gap=Math.max(0,separation-(car.length+other.length)/2);
-      if(!obstacle||gap<obstacle.gap)obstacle={gap,v:other.v};
+     // Exact oriented footprints avoid false conflicts between diverging
+     // vehicles whose centres are close but whose bodies do not overlap.
+     const clearance=footprintClearance(vehicleFootprint(car),vehicleFootprint(other));
+     if(clearance<Math.max(4,car.v*.65)){
+      if(!obstacle||clearance<obstacle.gap)obstacle={gap:clearance,v:other.v};
      }
     }
    }
