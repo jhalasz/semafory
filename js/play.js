@@ -85,6 +85,7 @@ function readSvg(xml){
   if(b.width>0&&b.height>0){
     svg.setAttribute("viewBox",[b.x,b.y,b.width,b.height].join(" "));
     svg.style.aspectRatio=b.width+"/"+b.height;
+    svg.parentElement.style.setProperty("--map-aspect",b.width+"/"+b.height);
   }
 }catch{}
  return parts;
