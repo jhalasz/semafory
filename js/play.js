@@ -195,8 +195,26 @@ function joinPointsSmoothly(previous,next){
 function makeTrack(network,movement){
  const combined=[];let approach=0,exitStart=0;
  for(const id of [movement.entryLane,movement.id,movement.exitLane]){
-  const points=network.segment(id,id===movement.entryLane);
+  let points=network.segment(id,id===movement.entryLane);
   if(!points)return null;
+  // The two Opavska incoming lanes share one approach until the
+  // physical fork. Preserve both original authored downstream paths.
+  if(movement.id==="T03"&&id===movement.entryLane){
+   const common=network.segment("P01",true);
+   if(common){
+    const fork=points[0];
+    let nearest=0,best=Infinity;
+    for(let j=0;j<common.length;j++){
+     const d=Math.hypot(common[j].x-fork.x,common[j].y-fork.y);
+     if(d<best){best=d;nearest=j;}
+    }
+    if(best<45&&nearest>3){
+     const prefix=common.slice(0,nearest+1);
+     const transition=joinPointsSmoothly(prefix,points);
+     if(transition)points=prefix.concat(transition);
+    }
+   }
+  }
   if(combined.length&&Math.hypot(combined.at(-1).x-points[0].x,combined.at(-1).y-points[0].y)>50)return null;
   if(id===movement.id)approach=combined.length?combined.reduce((acc,p,i,a)=>i?acc+Math.hypot(p.x-a[i-1].x,p.y-a[i-1].y):0,0):0;
   if(id===movement.exitLane)exitStart=combined.length?combined.reduce((acc,p,i,a)=>i?acc+Math.hypot(p.x-a[i-1].x,p.y-a[i-1].y):0,0):0;
@@ -205,7 +223,7 @@ function makeTrack(network,movement){
   combined.push(...joining);
  }
  const cumulative=[0];for(let i=1;i<combined.length;i++)cumulative.push(cumulative.at(-1)+Math.hypot(combined[i].x-combined[i-1].x,combined[i].y-combined[i-1].y));
- return{id:movement.id,entryLane:movement.entryLane,exitLane:movement.exitLane,entryEnd:approach,exitStart,signal:movement.signal,points:combined,dist:cumulative,length:cumulative.at(-1),stopAt:approach-12};
+ return{id:movement.id,entryLane:movement.id==="T03"?"P01":movement.entryLane,exitLane:movement.exitLane,entryEnd:approach,exitStart,signal:movement.signal,points:combined,dist:cumulative,length:cumulative.at(-1),stopAt:approach-12};
 }
 function position(t,s){
  s=Math.max(0,Math.min(t.length,s));let lo=0,hi=t.dist.length-1;while(lo+1<hi){const mid=(lo+hi)>>1;if(t.dist[mid]<s)lo=mid;else hi=mid;}const a=t.points[lo],b=t.points[hi],f=(s-t.dist[lo])/(t.dist[hi]-t.dist[lo]||1);return{x:a.x+(b.x-a.x)*f,y:a.y+(b.y-a.y)*f,angle:Math.atan2(b.y-a.y,b.x-a.x)*180/Math.PI};
