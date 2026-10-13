@@ -307,6 +307,14 @@ function animate(now){
     const p=position(car.track,car.s),q=position(other.track,other.s);
     const forkX=435; // physical beginning of the second Opavska lane
     const shared=car.track.entryLane==="P01";
+    // Other entry lanes (including Dukelska P04) also carry multiple
+    // movements. Preserve one FIFO queue until the authored lane ends.
+    if(!shared&&other.id<car.id){
+     const fork=Math.min(car.track.entryEnd,other.track.entryEnd);
+     if(car.s<fork+car.length/2&&other.s-other.length/2<fork+other.length){
+      delta=Math.min(delta,Math.max(0,other.s-car.s));
+     }
+    }
     const longitudinal=q.x-p.x;
     const lateral=Math.abs(q.y-p.y);
     // Before the fork cars form one queue, irrespective of their turn.
