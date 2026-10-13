@@ -284,34 +284,29 @@ function animate(now){
    if(other.id===car.id)continue;
    let delta=Infinity;
    if(other.track===car.track&&other.s>car.s)delta=other.s-car.s;
-   // One queue per physical entry lane, independent of the future turn.
-   // The leading vehicle owns the shared lane until its REAR bumper
-   // has cleared the branching point; a follower must not pass it.
+   // Common incoming approach: use road position rather than the end of
+   // a movement's authored entry segment as the physical fork.
    if(car.track.entryLane===other.track.entryLane){
-    const split=Math.min(car.track.entryEnd,other.track.entryEnd);
-    const leaderRear=other.s-other.length/2;
-    // Queue stays shared until rear bumper clears fork AND its divergent
-    // trajectory has physically separated from the following vehicle.
-    // Vehicles are ordered by entry into this physical lane, not by
-    // their chosen turn. Keep that order through the common section.
-    // Comparing only other.s > car.s allowed cars on different turn
-    // trajectories to overtake and form two independent queues.
-    if(other.id<car.id&&car.s<split+car.length/2&&
-       leaderRear<split+Math.max(12,car.length)){
-     delta=Math.min(delta,Math.max(0,other.s-car.s));
+    const p=position(car.track,car.s),q=position(other.track,other.s);
+    const forkX=435; // physical beginning of the second Opavska lane
+    const shared=car.track.entryLane==="P01";
+    const longitudinal=q.x-p.x;
+    const lateral=Math.abs(q.y-p.y);
+    // Before the fork cars form one queue, irrespective of their turn.
+    // Beyond it, vehicles on divergent lanes no longer block one another.
+    if(shared&&p.x<forkX+car.length/2&&q.x<forkX+other.length/2&&
+       longitudinal>0&&lateral<34){
+     delta=Math.min(delta,longitudinal);
     }
-    // After the fork, compare physical footprints: different movement tracks
-    // can still overlap, so arc-length comparison alone is insufficient.
-    const forkReach=65;
-    if(other.id<car.id&&car.s>split-forkReach&&car.s<split+forkReach&&
-       other.s>other.track.entryEnd-forkReach&&other.s<other.track.entryEnd+forkReach){
-      const p=position(car.track,car.s),q=position(other.track,other.s);
-      const sep=Math.hypot(p.x-q.x,p.y-q.y);
-      const safe=(car.length+other.length)/2+7;
-      if(sep<safe+Math.max(0,car.v)*.8){
-       const projected=Math.max(0,sep-(car.length+other.length)/2);
-       if(!obstacle||projected<obstacle.gap)obstacle={gap:projected,v:Math.min(car.v,other.v)};
-      }
+    // Where lanes overlap at the fork, keep a spatial collision envelope.
+    if(shared&&p.x>forkX-45&&p.x<forkX+65&&
+       q.x>forkX-45&&q.x<forkX+65&&longitudinal>0){
+     const separation=Math.hypot(p.x-q.x,p.y-q.y);
+     const clearance=(car.length+other.length)/2+5;
+     if(separation<clearance+Math.max(0,car.v)*.65){
+      const gap=Math.max(0,separation-(car.length+other.length)/2);
+      if(!obstacle||gap<obstacle.gap)obstacle={gap,v:other.v};
+     }
     }
    }
    if(car.track.exitLane===other.track.exitLane&&car.s>=car.track.exitStart-35){
