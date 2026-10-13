@@ -274,8 +274,13 @@ function animate(now){
     const leaderRear=other.s-other.length/2;
     // Queue stays shared until rear bumper clears fork AND its divergent
     // trajectory has physically separated from the following vehicle.
-    if(other.s>car.s&&leaderRear<split+Math.max(12,car.length)){
-     delta=Math.min(delta,other.s-car.s);
+    // Vehicles are ordered by entry into this physical lane, not by
+    // their chosen turn. Keep that order through the common section.
+    // Comparing only other.s > car.s allowed cars on different turn
+    // trajectories to overtake and form two independent queues.
+    if(other.id<car.id&&car.s<split+car.length/2&&
+       leaderRear<split+Math.max(12,car.length)){
+     delta=Math.min(delta,Math.max(0,other.s-car.s));
     }
     // After the fork, compare physical footprints: different movement tracks
     // can still overlap, so arc-length comparison alone is insufficient.
