@@ -299,21 +299,27 @@ function conflictAhead(car,snapshot){
   let result=null;
   for(const rule of yieldRules){
    if(car.track.id!==rule.from)continue;
-   // Use the entry boundary stop line (H06 for T06), not the downstream merge.
-   const at=car.track.stopAt;
-   const distance=at-car.s;
-   if(distance<0||distance>Math.max(120,car.v*3.5))continue;
+   const stop=car.track.stopAt,remaining=stop-car.s;
+   // Once the front of the vehicle has crossed the boundary, it is
+   // committed to the merge and may not stop inside the junction.
+   if(remaining<=0||remaining>Math.max(125,car.v*3.5))continue;
+   const ownMerge=car.track.exitStart;
+   const distanceAfterStop=Math.max(0,ownMerge-stop);
+   // Include acceleration from a full stop plus the time for the REAR
+   // of this vehicle to clear the shared entry.
+   const acceleration=Math.max(5,car.spec.maxAcceleration);
+   const crossingTime=Math.sqrt(2*(distanceAfterStop+car.length+20)/acceleration)+1.5;
    for(const other of snapshot){
     if(!rule.to.includes(other.track.id))continue;
     const otherDistance=other.track.exitStart-other.s;
-    // A conflicting vehicle approaching the merge, occupying it, or
-    // already passing through its initial shared section has priority.
-    if(otherDistance<-(other.length+42)||otherDistance>Math.max(100,other.v*3))continue;
-    const ownArrival=Math.max(0,distance-car.length/2)/Math.max(7,car.v);
-    const otherArrival=Math.max(0,otherDistance-other.length/2)/Math.max(7,other.v);
-    if(otherDistance>other.length&&otherArrival>ownArrival+2)continue;
-    // stopAt already represents the vehicle-center stop position.
-    const gap=Math.max(0,distance);
+    // Vehicle still upstream, alongside the merge, or just past it.
+    // A car past the merge is only safe once its rear clears the entry.
+    if(otherDistance<-(other.length+32))continue;
+    const otherArrival=otherDistance<=0?0:otherDistance/Math.max(5,other.v);
+    // Guard the entire time window needed to enter AND clear the
+    // priority lane; a momentarily empty merge is not sufficient.
+    if(otherArrival>crossingTime+1.5)continue;
+    const gap=Math.max(0,remaining);
     if(!result||gap<result.gap)result={gap,v:0};
    }
   }
