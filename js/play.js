@@ -246,7 +246,7 @@ function footprintClearance(a,b){
  return 0;
 }
 
-let conflictZones=[];
+let conflictZones=[],freeSignals=new Set(),yieldRules=[];
 function headingAt(t,s){const a=position(t,Math.max(0,s-8)),b=position(t,Math.min(t.length,s+8)),d=Math.hypot(b.x-a.x,b.y-a.y)||1;return{x:(b.x-a.x)/d,y:(b.y-a.y)/d};}
 function leftTurn(t){const a=headingAt(t,t.entryEnd-10),b=headingAt(t,t.exitStart+10);return a.x*b.y-a.y*b.x<-.25;}
 function buildConflicts(){
@@ -292,6 +292,32 @@ function conflictAhead(car,snapshot){
  return obstacle;
 }
 
+
+ // Yield at a physical merge: the minor stream must leave the shared lane
+ // free for vehicles already there or about to reach it.
+ function mergeYieldObstacle(car,snapshot){
+  let result=null;
+  for(const rule of yieldRules){
+   if(car.track.id!==rule.from)continue;
+   const at=car.track.exitStart;
+   const distance=at-car.s;
+   if(distance<car.length/2+4||distance>Math.max(100,car.v*3))continue;
+   for(const other of snapshot){
+    if(!rule.to.includes(other.track.id))continue;
+    const otherDistance=other.track.exitStart-other.s;
+    // A conflicting vehicle approaching the merge, occupying it, or
+    // already passing through its initial shared section has priority.
+    if(otherDistance<-(other.length+42)||otherDistance>Math.max(100,other.v*3))continue;
+    const ownArrival=Math.max(0,distance-car.length/2)/Math.max(7,car.v);
+    const otherArrival=Math.max(0,otherDistance-other.length/2)/Math.max(7,other.v);
+    if(otherDistance>other.length&&otherArrival>ownArrival+2)continue;
+    const gap=Math.max(0,distance-car.length/2-13);
+    if(!result||gap<result.gap)result={gap,v:0};
+   }
+  }
+  return result;
+ }
+
 function spawn(){
  if(!tracks.length||cars.length>90)return;
  const t=tracks[Math.floor(Math.random()*tracks.length)];
@@ -335,10 +361,10 @@ function requestSignal(id){
  const ok=controller.requestSignal(id);
  $("state").textContent=ok?"Vyžádána zelená pro "+id+" (bezpečné přepnutí).":"Tento semafor už má zelenou.";
 }
-function lightIsGreen(signal){return controller?.state(signal)==="green";}
+function lightIsGreen(signal){return freeSignals.has(signal)||controller?.state(signal)==="green";}
 function animate(now){
  if(!last)last=now;const real=Math.min(.05,(now-last)/1000);last=now;
- if(running){const dt=real*Number($("speed").value);clock+=dt;controller.tick(dt,active=>cars.some(c=>active.includes(c.track.signal)&&c.s>=c.track.stopAt&&c.s<c.track.exitStart+c.length));spawnClock+=dt;const interval=2.6/Number($("rate").value)*6;
+ if(running){const dt=real*Number($("speed").value);clock+=dt;controller.tick(dt,active=>cars.some(c=>!freeSignals.has(c.track.signal)&&active.includes(c.track.signal)&&c.s>=c.track.stopAt&&c.s<c.track.exitStart+c.length));spawnClock+=dt;const interval=2.6/Number($("rate").value)*6;
  while(spawnClock>=interval){spawnClock-=interval;spawn();}
  // Take one consistent snapshot so all vehicles react to the same traffic state.
  const snapshots=cars.map(c=>({...c}));
