@@ -245,6 +245,53 @@ function footprintClearance(a,b){
  }
  return 0;
 }
+
+let conflictZones=[];
+function headingAt(t,s){const a=position(t,Math.max(0,s-8)),b=position(t,Math.min(t.length,s+8)),d=Math.hypot(b.x-a.x,b.y-a.y)||1;return{x:(b.x-a.x)/d,y:(b.y-a.y)/d};}
+function leftTurn(t){const a=headingAt(t,t.entryEnd-10),b=headingAt(t,t.exitStart+10);return a.x*b.y-a.y*b.x<-.25;}
+function buildConflicts(){
+ const result=[];
+ for(let i=0;i<tracks.length;i++)for(let j=i+1;j<tracks.length;j++){
+  const a=tracks[i],b=tracks[j];
+  if(a.entryLane===b.entryLane||a.exitLane===b.exitLane)continue;
+  let count=0,sumA=0,sumB=0;
+  for(let x=a.entryEnd-12;x<a.exitStart+12;x+=5)for(let y=b.entryEnd-12;y<b.exitStart+12;y+=5){
+   const p=position(a,x),q=position(b,y);
+   if(Math.hypot(p.x-q.x,p.y-q.y)<14){count++;sumA+=x;sumB+=y;}
+  }
+  if(count){const ha=headingAt(a,a.entryEnd-10),hb=headingAt(b,b.entryEnd-10);
+   result.push({a,b,sa:sumA/count,sb:sumB/count,opposite:ha.x*hb.x+ha.y*hb.y<-.65});}
+ }
+ return result;
+}
+function conflictAhead(car,snapshot){
+ let obstacle=null;
+ for(const zone of conflictZones){
+  if(car.track!==zone.a&&car.track!==zone.b)continue;
+  const own=car.track===zone.a?zone.sa:zone.sb;
+  const otherAt=car.track===zone.a?zone.sb:zone.sa;
+  const otherTrack=car.track===zone.a?zone.b:zone.a;
+  const d=own-car.s;
+  if(d<car.length/2+5||d>Math.max(90,car.v*2.7))continue;
+  for(const other of snapshot){
+   if(other.track!==otherTrack)continue;
+   const od=otherAt-other.s;
+   if(od<-(other.length/2+14)||od>Math.max(70,other.v*2.5))continue;
+   const left=leftTurn(car.track),leftOther=leftTurn(other.track);
+   let mustYield;
+   if(zone.opposite&&left!==leftOther)mustYield=left;
+   else{
+    const arrival=d/Math.max(car.v,8),arrivalOther=od/Math.max(other.v,8);
+    mustYield=arrivalOther<arrival-.3||(Math.abs(arrivalOther-arrival)<=.3&&other.id<car.id);
+   }
+   if(!mustYield)continue;
+   const gap=Math.max(0,d-car.length/2-other.length/2-10);
+   if(!obstacle||gap<obstacle.gap)obstacle={gap,v:0};
+  }
+ }
+ return obstacle;
+}
+
 function spawn(){
  if(!tracks.length||cars.length>90)return;
  const t=tracks[Math.floor(Math.random()*tracks.length)];
@@ -342,7 +389,9 @@ function animate(now){
    const gap=delta-(other.length+car.length)/2;
    if(Number.isFinite(gap)&&(!obstacle||gap<obstacle.gap))obstacle={gap,v:other.v};
   }
-  // A red signal acts like a stationary lead vehicle at the stop line.
+  const crossing=conflictAhead(car,snapshots);
+   if(crossing&&(!obstacle||crossing.gap<obstacle.gap))obstacle=crossing;
+   // A red signal acts like a stationary lead vehicle at the stop line.
   if(!lightIsGreen(car.track.signal)&&car.s<car.track.stopAt){
    const gap=car.track.stopAt-car.s;
    if(!obstacle||gap<obstacle.gap)obstacle={gap,v:0};
@@ -362,7 +411,8 @@ async function init(){
  signalLocations=locateSignals(parts);
  const network=makeRoadNetwork(parts,data.directions);
  tracks=(data.movements?.movements||[]).filter(m=>m.confirmed).map(m=>makeTrack(network,m)).filter(Boolean);
- signals=[...new Set(tracks.map(t=>t.signal))];if(!signals.length||!tracks.length)throw Error("Chybí potvrzené průjezdy nebo směry");
+ conflictZones=buildConflicts();
+  signals=[...new Set(tracks.map(t=>t.signal))];if(!signals.length||!tracks.length)throw Error("Chybí potvrzené průjezdy nebo směry");
  const plan=data.signalPlan;
  if(!plan||plan.stages.some(stage=>stage.green.some(signal=>!signals.includes(signal))))throw Error("Chybí platný fázový plán projektu");
  controller=createSignalController(plan);
