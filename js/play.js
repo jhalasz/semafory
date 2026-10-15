@@ -408,10 +408,13 @@ function animate(now){
     // Other entry lanes (including Dukelska P04) also carry multiple
     // movements. Preserve one FIFO queue until the authored lane ends.
     if(!shared){
+     // A single entry lane is a FIFO resource up to the physical fork.
+     // Creation order is the lane order: differing movement progress after
+     // a stop must never let the following car jump ahead.
      const fork=Math.min(car.track.entryEnd,other.track.entryEnd);
-     // Shared physical approach: FIFO is defined by road position, not ID.
-     const ahead=other.s>car.s+0.001||(Math.abs(other.s-car.s)<=0.001&&other.id<car.id);
-     if(ahead&&car.s<fork+car.length/2&&other.s-other.length/2<fork+other.length){
+     const followerStillShared=car.s-car.length/2<fork+car.length/2;
+     const leaderStillShared=other.s-other.length/2<fork+other.length/2;
+     if(other.id<car.id&&followerStillShared&&leaderStillShared){
       delta=Math.min(delta,Math.max(0,other.s-car.s));
      }
     }
