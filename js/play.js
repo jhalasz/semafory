@@ -292,14 +292,16 @@ function conflictAhead(car,snapshot){
    // Compute the full time required for the yielding vehicle to accelerate
    // from the line and completely clear the overlapping vehicle footprints.
    const remaining=Math.max(0,own-stopS);
-   const traverse=remaining+car.length+other.length/2+20;
-   const acceleration=Math.max(4,car.spec.maxAcceleration);
-   const clearanceTime=Math.sqrt(2*traverse/acceleration)+1.5;
+   const traverse=remaining+car.length+other.length/2+30;
+   // Conservative crossing estimate: starting from a stop, with reduced
+   // effective acceleration through a turn and a margin for its full body.
+   const acceleration=Math.max(3,car.spec.maxAcceleration*.55);
+   const clearanceTime=Math.sqrt(2*traverse/acceleration)+3;
    // A priority vehicle already across the conflict only clears it after
    // its rear bumper passes. An approaching vehicle needs a safe time gap.
    if(od<-(other.length/2+18))continue;
    const arrival=od<=other.length/2?0:(od-other.length/2)/Math.max(6,other.v);
-   if(arrival>clearanceTime+1.5)continue;
+   if(arrival>clearanceTime+3)continue;
    const gap=Math.max(0,stopS-car.s);
    if(!obstacle||gap<obstacle.gap)obstacle={gap,v:0};
   }
