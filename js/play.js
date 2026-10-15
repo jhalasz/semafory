@@ -280,11 +280,16 @@ function conflictAhead(car,snapshot){
    const left=leftTurn(car.track),leftOther=leftTurn(other.track);
    let mustYield;
    if(zone.opposite&&left!==leftOther)mustYield=left;
+   else if(zone.opposite&&left&&leftOther)mustYield=false;
    else{
     const arrival=d/Math.max(car.v,8),arrivalOther=od/Math.max(other.v,8);
     mustYield=arrivalOther<arrival-.3||(Math.abs(arrivalOther-arrival)<=.3&&other.id<car.id);
    }
    if(!mustYield)continue;
+   // Vehicles waiting at a red signal cannot claim a conflicting crossing.
+   if(!lightIsGreen(other.track.signal)&&other.s<other.track.stopAt)continue;
+   // Yielding vehicles hold just before the conflict space; the entire body
+   // of the priority vehicle must clear before the crossing is released.
    const gap=Math.max(0,d-car.length/2-other.length/2-10);
    if(!obstacle||gap<obstacle.gap)obstacle={gap,v:0};
   }
