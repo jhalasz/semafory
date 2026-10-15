@@ -405,9 +405,11 @@ function animate(now){
     const shared=car.track.entryLane==="P01";
     // Other entry lanes (including Dukelska P04) also carry multiple
     // movements. Preserve one FIFO queue until the authored lane ends.
-    if(!shared&&other.id<car.id){
+    if(!shared){
      const fork=Math.min(car.track.entryEnd,other.track.entryEnd);
-     if(car.s<fork+car.length/2&&other.s-other.length/2<fork+other.length){
+     // Shared physical approach: FIFO is defined by road position, not ID.
+     const ahead=other.s>car.s+0.001||(Math.abs(other.s-car.s)<=0.001&&other.id<car.id);
+     if(ahead&&car.s<fork+car.length/2&&other.s-other.length/2<fork+other.length){
       delta=Math.min(delta,Math.max(0,other.s-car.s));
      }
     }
