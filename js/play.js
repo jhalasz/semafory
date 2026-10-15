@@ -299,9 +299,10 @@ function conflictAhead(car,snapshot){
   let result=null;
   for(const rule of yieldRules){
    if(car.track.id!==rule.from)continue;
-   const at=car.track.exitStart;
+   // Use the entry boundary stop line (H06 for T06), not the downstream merge.
+   const at=car.track.stopAt;
    const distance=at-car.s;
-   if(distance<car.length/2+4||distance>Math.max(100,car.v*3))continue;
+   if(distance<0||distance>Math.max(120,car.v*3.5))continue;
    for(const other of snapshot){
     if(!rule.to.includes(other.track.id))continue;
     const otherDistance=other.track.exitStart-other.s;
@@ -311,7 +312,8 @@ function conflictAhead(car,snapshot){
     const ownArrival=Math.max(0,distance-car.length/2)/Math.max(7,car.v);
     const otherArrival=Math.max(0,otherDistance-other.length/2)/Math.max(7,other.v);
     if(otherDistance>other.length&&otherArrival>ownArrival+2)continue;
-    const gap=Math.max(0,distance-car.length/2-13);
+    // stopAt already represents the vehicle-center stop position.
+    const gap=Math.max(0,distance);
     if(!result||gap<result.gap)result={gap,v:0};
    }
   }
