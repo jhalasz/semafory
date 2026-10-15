@@ -272,31 +272,40 @@ function conflictAhead(car,snapshot){
   const otherAt=car.track===zone.a?zone.sb:zone.sa;
   const otherTrack=car.track===zone.a?zone.b:zone.a;
   const d=own-car.s;
-  if(d<car.length/2+5||d>Math.max(90,car.v*2.7))continue;
+  // Stop before the crossing, but never try to stop a vehicle already
+  // committed to the conflict space.
+  const stopS=own-car.length/2-16;
+  if(car.s>=stopS||d>Math.max(155,car.v*4))continue;
   for(const other of snapshot){
    if(other.track!==otherTrack)continue;
    const od=otherAt-other.s;
-   if(od<-(other.length/2+14)||od>Math.max(70,other.v*2.5))continue;
-   const left=leftTurn(car.track),leftOther=leftTurn(other.track);
-   let mustYield;
-   if(zone.opposite&&left!==leftOther)mustYield=left;
-   else if(zone.opposite&&left&&leftOther)mustYield=false;
-   else{
-    const arrival=d/Math.max(car.v,8),arrivalOther=od/Math.max(other.v,8);
-    mustYield=arrivalOther<arrival-.3||(Math.abs(arrivalOther-arrival)<=.3&&other.id<car.id);
+   const left=leftTurn(car.track),otherLeft=leftTurn(other.track);
+   let mustYield=false;
+   if(zone.opposite&&left!==otherLeft)mustYield=left;
+   else if(zone.opposite&&left&&otherLeft)mustYield=false;
+   else {
+    const tOwn=d/Math.max(8,car.v),tOther=od/Math.max(8,other.v);
+    mustYield=tOther<tOwn-.3||(Math.abs(tOther-tOwn)<=.3&&other.id<car.id);
    }
    if(!mustYield)continue;
-   // Vehicles waiting at a red signal cannot claim a conflicting crossing.
    if(!lightIsGreen(other.track.signal)&&other.s<other.track.stopAt)continue;
-   // Yielding vehicles hold just before the conflict space; the entire body
-   // of the priority vehicle must clear before the crossing is released.
-   const gap=Math.max(0,d-car.length/2-other.length/2-10);
+   // Compute the full time required for the yielding vehicle to accelerate
+   // from the line and completely clear the overlapping vehicle footprints.
+   const remaining=Math.max(0,own-stopS);
+   const traverse=remaining+car.length+other.length/2+20;
+   const acceleration=Math.max(4,car.spec.maxAcceleration);
+   const clearanceTime=Math.sqrt(2*traverse/acceleration)+1.5;
+   // A priority vehicle already across the conflict only clears it after
+   // its rear bumper passes. An approaching vehicle needs a safe time gap.
+   if(od<-(other.length/2+18))continue;
+   const arrival=od<=other.length/2?0:(od-other.length/2)/Math.max(6,other.v);
+   if(arrival>clearanceTime+1.5)continue;
+   const gap=Math.max(0,stopS-car.s);
    if(!obstacle||gap<obstacle.gap)obstacle={gap,v:0};
   }
  }
  return obstacle;
 }
-
 
  // Yield at a physical merge: the minor stream must leave the shared lane
  // free for vehicles already there or about to reach it.
