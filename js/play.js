@@ -338,6 +338,7 @@ function locateSignals(parts){
 const signalVisuals=new Map();
 function renderSignalLights(){
  for(const loc of signalLocations){
+   if(freeSignals.has(loc.id))continue;
   let visual=signalVisuals.get(loc.id);
   if(!visual){
    const g=svgEl("g",{transform:`translate(${loc.x} ${loc.y})`,cursor:"pointer","data-signal":loc.id,role:"button",tabindex:0});
@@ -356,7 +357,7 @@ function renderSignalLights(){
  }
 }
 function requestSignal(id){
- if(!controller)return;
+ if(!controller||freeSignals.has(id))return;
  if(!$("manual").checked){$("state").textContent="Nejprve zapni ruční ovládání.";return;}
  const ok=controller.requestSignal(id);
  $("state").textContent=ok?"Vyžádána zelená pro "+id+" (bezpečné přepnutí).":"Tento semafor už má zelenou.";
@@ -415,7 +416,9 @@ function animate(now){
    const gap=delta-(other.length+car.length)/2;
    if(Number.isFinite(gap)&&(!obstacle||gap<obstacle.gap))obstacle={gap,v:other.v};
   }
-  const crossing=conflictAhead(car,snapshots);
+  const yielding=mergeYieldObstacle(car,snapshots);
+   if(yielding&&(!obstacle||yielding.gap<obstacle.gap))obstacle=yielding;
+   const crossing=conflictAhead(car,snapshots);
    if(crossing&&(!obstacle||crossing.gap<obstacle.gap))obstacle=crossing;
    // A red signal acts like a stationary lead vehicle at the stop line.
   if(!lightIsGreen(car.track.signal)&&car.s<car.track.stopAt){
@@ -439,7 +442,10 @@ async function init(){
  tracks=(data.movements?.movements||[]).filter(m=>m.confirmed).map(m=>makeTrack(network,m)).filter(Boolean);
  conflictZones=buildConflicts();
   signals=[...new Set(tracks.map(t=>t.signal))];if(!signals.length||!tracks.length)throw Error("Chybí potvrzené průjezdy nebo směry");
- const plan=data.signalPlan;
+ const freeTraffic=data.uncontrolledMovements||{};
+  freeSignals=new Set(freeTraffic.freeSignals||[]);
+  yieldRules=freeTraffic.yieldRules||[];
+  const plan={...data.signalPlan,linkedSignals:(data.signalPlan?.linkedSignals||[]).map(g=>g.filter(id=>!freeSignals.has(id))).filter(g=>g.length>1)};
  if(!plan||plan.stages.some(stage=>stage.green.some(signal=>!signals.includes(signal))))throw Error("Chybí platný fázový plán projektu");
  controller=createSignalController(plan);
  controller.setManual($("manual").checked);
