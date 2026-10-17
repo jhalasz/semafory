@@ -452,7 +452,7 @@ function animate(now){
  }
  cars=cars.filter(c=>{if(c.s<c.track.length)return true;c.el.remove();passed++;return false;});
  }
- const stage=controller?.status();$("phase").textContent=stage?("Fáze "+stage.stage+" · "+stage.mode+" · "+stage.green.join(", ")):"—";$("count").textContent=cars.length;$("passed").textContent=passed;
+ const stage=controller?.status();$("phase").textContent="Bez semaforů · hlavní / vedlejší";$("count").textContent=cars.length;$("passed").textContent=passed;
  renderSignalLights();
  requestAnimationFrame(animate);
 }
