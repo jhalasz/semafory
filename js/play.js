@@ -303,6 +303,27 @@ function priorityGate(car,snapshot){
   // enters, whereas a vehicle already past the signal remains relevant.
   if(!lightIsGreen(other.track.signal)&&other.s<other.track.stopAt)continue;
   if(other.s-other.length/2>other.track.length)continue;
+  // Shared-exit merge requires an ordering decision BEFORE the yielding
+  // movement crosses its entry boundary. The ordinary footprint samples
+  // alone can miss a fast priority vehicle catching a slow launch.
+  if(car.track.exitLane===other.track.exitLane&&
+     car.track.entryLane!==other.track.entryLane){
+   const exit=car.track.exitStart;
+   const ownDistance=Math.max(0,exit-start);
+   const ownAcc=Math.max(3,car.spec.maxAcceleration*.55);
+   const launch=fromStop?0:Math.min(car.v,car.spec.cruise);
+   const ownArrival=(Math.sqrt(launch*launch+2*ownAcc*ownDistance)-launch)/ownAcc;
+   const priorityDistance=other.track.exitStart-other.s;
+   const priorityArrival=Math.max(0,priorityDistance-other.length/2)/Math.max(5,other.v);
+   const priorityCleared=other.s-other.length/2>other.track.exitStart+car.length+25;
+   // Protect both the merge entry and the downstream shared-lane headway.
+   // Waiting is required if the priority car can arrive before our rear
+   // has fully cleared the joining segment, even when its path centreline
+   // is not sampled at precisely the same simulated instant.
+   const ownClearance=ownArrival+(car.length+other.length+30)/Math.max(10,car.spec.cruise*.65)+2;
+   if(!priorityCleared&&priorityArrival<=ownClearance+2)
+    return {gap:Math.max(0,stop-car.s),v:0};
+  }
   for(let t=0;t<=horizon;t+=.3){
    const ownS=Math.min(car.track.length,start+predictedProgress(car,t,fromStop));
    const otherS=Math.min(other.track.length,other.s+Math.max(0,other.v)*t);
