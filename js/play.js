@@ -275,7 +275,8 @@ function sharedExitPriority(car,snapshot){
   const u=headingAt(car.track,car.track.entryEnd-10),v=headingAt(priorityTrack,priorityTrack.entryEnd-10);
   if(u.x*v.x+u.y*v.y>-.55)continue;
   const conflictS=car.track.exitStart;
-  const stopS=Math.max(car.track.entryEnd,conflictS-car.length/2-18);
+  // Yield BEFORE entering the junction, not at the downstream merge.
+  const stopS=car.track.stopAt;
   if(car.s>=stopS)continue;
   const approach=conflictS-car.s;
   if(approach>Math.max(170,car.v*4))continue;
@@ -306,7 +307,9 @@ function conflictAhead(car,snapshot){
   const d=own-car.s;
   // Stop before the crossing, but never try to stop a vehicle already
   // committed to the conflict space.
-  const stopS=own-car.length/2-16;
+  // Once past the junction entry, the vehicle is committed and may not
+  // be stopped by a late priority decision inside the crossing.
+  const stopS=Math.min(car.track.stopAt,own-car.length/2-16);
   if(car.s>=stopS||d>Math.max(155,car.v*4))continue;
   for(const other of snapshot){
    if(other.track!==otherTrack)continue;
