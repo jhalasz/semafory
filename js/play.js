@@ -292,11 +292,12 @@ function conflictAhead(car,snapshot){
    // Compute the full time required for the yielding vehicle to accelerate
    // from the line and completely clear the overlapping vehicle footprints.
    const remaining=Math.max(0,own-stopS);
-   const traverse=remaining+car.length+other.length/2+30;
+   const traverse=Math.max(0,own-car.s)+car.length/2+other.length/2+30;
    // Conservative crossing estimate: starting from a stop, with reduced
    // effective acceleration through a turn and a margin for its full body.
    const acceleration=Math.max(3,car.spec.maxAcceleration*.55);
-   const clearanceTime=Math.sqrt(2*traverse/acceleration)+3;
+   const launchSpeed=Math.min(car.v,12);
+   const clearanceTime=(Math.sqrt(launchSpeed*launchSpeed+2*acceleration*traverse)-launchSpeed)/acceleration+3;
    // A priority vehicle already across the conflict only clears it after
    // its rear bumper passes. An approaching vehicle needs a safe time gap.
    if(od<-(other.length/2+18))continue;
@@ -444,6 +445,20 @@ function animate(now){
    }
    const gap=delta-(other.length+car.length)/2;
    if(Number.isFinite(gap)&&(!obstacle||gap<obstacle.gap))obstacle={gap,v:other.v};
+  }
+  // Physical follower envelope independent of route identities.
+  const ownFoot=vehicleFootprint(car,1);
+  for(const other of snapshots){
+   if(other.id===car.id)continue;
+   const p=ownFoot.p,q=position(other.track,other.s);
+   const forward=(q.x-p.x)*ownFoot.ux+(q.y-p.y)*ownFoot.uy;
+   const sideways=Math.abs((q.x-p.x)*ownFoot.vx+(q.y-p.y)*ownFoot.vy);
+   if(forward<=0||forward>Math.max(85,car.v*2.2)||sideways>13)continue;
+   const clearance=footprintClearance(ownFoot,vehicleFootprint(other,1));
+   if(clearance<Math.max(12,car.v*1.25)){
+    const candidate={gap:Math.max(0,clearance),v:other.v};
+    if(!obstacle||candidate.gap<obstacle.gap)obstacle=candidate;
+   }
   }
   const yielding=mergeYieldObstacle(car,snapshots);
    if(yielding&&(!obstacle||yielding.gap<obstacle.gap))obstacle=yielding;
