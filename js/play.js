@@ -473,7 +473,7 @@ function animate(now){
      }
     }
    }
-   if(car.track.exitLane===other.track.exitLane&&car.s>=car.track.exitStart-35){
+   if(car.track.exitLane===other.track.exitLane&&car.s>=car.track.exitStart&&other.s>=other.track.exitStart){
     const otherExit=other.s-other.track.exitStart;
     const ourExit=car.s-car.track.exitStart;
     if(otherExit>ourExit&&otherExit>-other.length)delta=Math.min(delta,otherExit-ourExit);
@@ -485,6 +485,13 @@ function animate(now){
   const ownFoot=vehicleFootprint(car,1);
   for(const other of snapshots){
    if(other.id===car.id)continue;
+   // Only follow a vehicle belonging to the same physical stream.
+   // A crossing priority vehicle is NOT a leader on this lane; yielding
+   // was already decided before the junction entry.
+   const sameMovement=car.track===other.track;
+   const commonApproach=car.track.entryLane===other.track.entryLane&&car.s<car.track.entryEnd&&other.s<other.track.entryEnd;
+   const commonExit=car.track.exitLane===other.track.exitLane&&car.s>=car.track.exitStart&&other.s>=other.track.exitStart;
+   if(!sameMovement&&!commonApproach&&!commonExit)continue;
    const p=ownFoot.p,q=position(other.track,other.s);
    const forward=(q.x-p.x)*ownFoot.ux+(q.y-p.y)*ownFoot.uy;
    const sideways=Math.abs((q.x-p.x)*ownFoot.vx+(q.y-p.y)*ownFoot.vy);
