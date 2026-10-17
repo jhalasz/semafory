@@ -315,12 +315,44 @@ function priorityGate(car,snapshot){
  }
  return null;
 }
+// Diagnostic-only telemetry: each car owns its history while on the map.
+const telemetryInterval=.1;
+function recordTelemetry(car,reason,obstacle=null,gate=null,force=false){
+ if(!car.history)return;
+ const tick=Math.floor((clock+1e-8)/telemetryInterval);
+ const signal=signalsEnabled?(controller?.state(car.track.signal)||"unknown"):"off";
+ const cause=gate&&obstacle===gate?"priority":obstacle?"vehicle-or-signal":"free";
+ const state=cause+"|"+signal+"|"+(car.s>car.track.stopAt?"entered":"approach");
+ if(!force&&tick===car.lastTelemetryTick&&state===car.lastTelemetryState)return;
+ // A state transition is retained immediately; routine positions once per .1s.
+ const transition=state!==car.lastTelemetryState;
+ if(!force&&!transition&&tick===car.lastTelemetryTick)return;
+ const p=position(car.track,car.s);
+ car.history.push({t:+clock.toFixed(3),s:+car.s.toFixed(3),v:+car.v.toFixed(3),
+  x:+p.x.toFixed(2),y:+p.y.toFixed(2),angle:+p.angle.toFixed(2),
+  mode:cause,obstacle:obstacle?{gap:+obstacle.gap.toFixed(3),v:+obstacle.v.toFixed(3)}:null,
+  signal,event:force?reason:transition?"change":null});
+ car.lastTelemetryTick=tick;car.lastTelemetryState=state;
+}
+function exportDiagnostics(){
+ const payload={version:"2.5.18",clock,signalsEnabled,collision:collisionReport,
+  cars:cars.map(c=>({id:c.id,route:c.track.id,entryLane:c.track.entryLane,
+   exitLane:c.track.exitLane,roadPriority:c.track.roadPriority,type:c.spec===VEHICLE_TYPES.truck?"truck":"car",
+   length:c.length,enteredAt:c.enteredAt,history:c.history}))};
+ const blob=new Blob([JSON.stringify(payload,null,2)],{type:"application/json"});
+ const url=URL.createObjectURL(blob),link=document.createElement("a");
+ link.href=url;link.download="semafory-diagnostika-"+formatTime(clock).replaceAll(":","-")+".json";
+ document.body.append(link);link.click();link.remove();
+ setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
 function spawn(){
  if(!tracks.length||cars.length>90)return;
  const t=tracks[Math.floor(Math.random()*tracks.length)];
  if(cars.some(c=>c.track.entryLane===t.entryLane&&c.s-c.length/2<65))return;
  const truck=Math.random()<.09,spec=truck?VEHICLE_TYPES.truck:VEHICLE_TYPES.car;const g=svgEl("g"),body=svgEl("rect",{x:truck?-17:-12,y:truck?-6:-5,width:truck?34:24,height:truck?12:10,rx:2,fill:truck?"#f0c673":["#fff5bf","#e14e5a","#61b9ef","#9ee08e"][Math.floor(Math.random()*4)],stroke:"#172536","stroke-width":1.5});
- g.append(body);carsLayer.append(g);cars.push({id:nextId++,track:t,s:0,v:spec.cruise,length:spec.length,spec,el:g});
+ g.append(body);carsLayer.append(g);const car={id:nextId++,track:t,s:0,v:spec.cruise,length:spec.length,spec,el:g,
+  enteredAt:clock,history:[],lastTelemetryTick:-1,lastTelemetryState:""};
+ cars.push(car);recordTelemetry(car,"spawn",null,null,true);
 }
 function locateSignals(parts){
  // Signal marker order is the canonical S01, S02 ... identifier order.
@@ -450,6 +482,7 @@ function animate(now){
    if(!obstacle||gap<obstacle.gap)obstacle={gap,v:0};
   }
   advanceVehicle(car,obstacle,dt);
+  recordTelemetry(car,"step",obstacle,gate);
  }
  // Detect overlap of real oriented body rectangles, not buffered prediction footprints.
  // Reuse the identical oriented footprint for every pair in this step.
@@ -461,6 +494,7 @@ function animate(now){
   }
  }
  if(collision){
+  for(const c of cars)recordTelemetry(c,"collision",null,null,true);
   running=false;collisionLocked=true;
   const detail=collision.map(c=>{
    const before=snapshots.find(v=>v.id===c.id);
@@ -512,6 +546,7 @@ async function init(){
  };
  $("start").onclick=()=>{if(collisionLocked){$("state").textContent="Po kolizi spusť novou simulaci.";return;}running=true;$("state").textContent="Simulace běží";};
  $("pause").onclick=()=>{running=false;$("state").textContent="Pozastaveno";};
+ $("export-diagnostics").onclick=exportDiagnostics;
  $("reset").onclick=()=>{for(const c of cars)c.el.remove();cars=[];clock=0;accumulator=0;collisionLocked=false;collisionReport=null;$("diagnostics").hidden=true;phase=0;controller.reset();passed=0;spawnClock=0;running=true;$("state").textContent="Simulace běží";};
  for(const id of ["speed","rate"])$(id).oninput=()=>$(id+"-value").textContent=$(id).value+(id==="speed"?"×":"");
  requestAnimationFrame(animate);
