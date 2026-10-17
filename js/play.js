@@ -223,7 +223,7 @@ function makeTrack(network,movement){
   combined.push(...joining);
  }
  const cumulative=[0];for(let i=1;i<combined.length;i++)cumulative.push(cumulative.at(-1)+Math.hypot(combined[i].x-combined[i-1].x,combined[i].y-combined[i-1].y));
- return{id:movement.id,entryLane:movement.id==="T03"?"P01":movement.entryLane,exitLane:movement.exitLane,entryEnd:approach,exitStart,signal:movement.signal,points:combined,dist:cumulative,length:cumulative.at(-1),stopAt:approach-12};
+ return{id:movement.id,roadPriority:(["P03","P04"].includes(movement.entryLane)?"main":"minor"),entryLane:movement.id==="T03"?"P01":movement.entryLane,exitLane:movement.exitLane,entryEnd:approach,exitStart,signal:movement.signal,points:combined,dist:cumulative,length:cumulative.at(-1),stopAt:approach-12};
 }
 function position(t,s){
  s=Math.max(0,Math.min(t.length,s));let lo=0,hi=t.dist.length-1;while(lo+1<hi){const mid=(lo+hi)>>1;if(t.dist[mid]<s)lo=mid;else hi=mid;}const a=t.points[lo],b=t.points[hi],f=(s-t.dist[lo])/(t.dist[hi]-t.dist[lo]||1);return{x:a.x+(b.x-a.x)*f,y:a.y+(b.y-a.y)*f,angle:Math.atan2(b.y-a.y,b.x-a.x)*180/Math.PI};
@@ -281,7 +281,11 @@ function priorityGate(car,snapshot){
  if(car.s>stop+.1)return null;
  const priority=snapshot.filter(other=>{
   if(other.id===car.id)return false;
-  if(leftTurn(car.track)&&opposingTracks(car.track,other.track)&&!leftTurn(other.track))return true;
+  // A minor approach yields to ALL main-road movements, including turns.
+  if(car.track.roadPriority==="minor"&&other.track.roadPriority==="main")return true;
+  // Among approaches of the same status, left turn yields to opposing
+  // through traffic and right turns. Opposing left turns do not claim priority.
+  if(car.track.roadPriority===other.track.roadPriority&&leftTurn(car.track)&&opposingTracks(car.track,other.track)&&!leftTurn(other.track))return true;
   return yieldRules.some(rule=>rule.from===car.track.id&&rule.to.includes(other.track.id));
  });
  if(!priority.length)return null;
@@ -330,6 +334,7 @@ function locateSignals(parts){
 }
 const signalVisuals=new Map();
 function renderSignalLights(){
+ lights.replaceChildren();return; // Unsignalized test mode: no signal heads
  for(const loc of signalLocations){
    if(freeSignals.has(loc.id))continue;
   let visual=signalVisuals.get(loc.id);
@@ -460,7 +465,7 @@ async function init(){
 
   signals=[...new Set(tracks.map(t=>t.signal))];if(!signals.length||!tracks.length)throw Error("Chybí potvrzené průjezdy nebo směry");
  const freeTraffic=data.uncontrolledMovements||{};
-  freeSignals=new Set(freeTraffic.freeSignals||[]);
+  freeSignals=new Set(tracks.map(t=>t.signal)); // All lights completely disabled
   yieldRules=freeTraffic.yieldRules||[];
   const plan={...data.signalPlan,linkedSignals:(data.signalPlan?.linkedSignals||[]).map(g=>g.filter(id=>!freeSignals.has(id))).filter(g=>g.length>1)};
  if(!plan||plan.stages.some(stage=>stage.green.some(signal=>!signals.includes(signal))))throw Error("Chybí platný fázový plán projektu");
@@ -468,7 +473,7 @@ async function init(){
  controller.setManual($("manual").checked);
  $("manual").onchange=()=>{controller.setManual($("manual").checked);$("state").textContent=$("manual").checked?"Ruční řízení: klikni na semafor.":"Automatické řízení.";};
  if(signals.some(id=>!signalLocations.some(loc=>loc.id===id)))throw Error("V SVG chybí pozice potvrzeného semaforu");
- $("state").textContent="Připraveno: "+tracks.length+" průjezdů";
+ $("state").textContent="Bez semaforů: hlavní Dukelská–Nová cesta · "+tracks.length+" průjezdů";
  $("start").onclick=()=>{running=true;$("state").textContent="Simulace běží";};
  $("pause").onclick=()=>{running=false;$("state").textContent="Pozastaveno";};
  $("reset").onclick=()=>{for(const c of cars)c.el.remove();cars=[];clock=0;phase=0;controller.reset();passed=0;spawnClock=0;running=true;$("state").textContent="Simulace běží";};
