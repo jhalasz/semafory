@@ -2,7 +2,7 @@ import {VEHICLE_TYPES,advanceVehicle} from "./vehicle-dynamics.js?v=2.3";
 import {createSignalController} from "./signal-controller.js?v=2.4.3";
 const ns="http://www.w3.org/2000/svg",svg=document.getElementById("scene"),$=id=>document.getElementById(id);
 const map=$("map"),photoMap=$("photo-map"),markings=$("markings"),carsLayer=$("vehicles"),lights=$("lights");
-let tracks=[],cars=[],passed=0,running=false,clock=0,spawnClock=0,last=0,phase=0,nextId=1,signals=[],controller=null,signalLocations=[];
+let signalsEnabled=false,collisionLocked=false,tracks=[],cars=[],passed=0,running=false,clock=0,spawnClock=0,last=0,phase=0,nextId=1,signals=[],controller=null,signalLocations=[];
 function svgEl(name,attrs={}){const e=document.createElementNS(ns,name);for(const [k,v]of Object.entries(attrs))e.setAttribute(k,String(v));return e;}
 function category(el){const style=el.getAttribute("style")||"";const stroke=(el.getAttribute("stroke")||(style.match(/stroke:\s*([^;]+)/)||[])[1]||"").toLowerCase(),fill=(el.getAttribute("fill")||(style.match(/fill:\s*([^;]+)/)||[])[1]||"").toLowerCase();const c=stroke&&stroke!=="none"?stroke:fill;if(["#fff","#ffffff"].includes(c))return"markings";if(["#61cbf4","#37b5ed"].includes(c))return"lane";if(["#ffc000","#f59e0b"].includes(c))return"route";if(["#7030a0","#a855f7"].includes(c))return"boundary";if(["#00b050","#22c55e"].includes(c)||stroke==="#042433"&&fill==="#00b050")return"signal";return"map";}
 function readSvg(xml){
@@ -282,10 +282,10 @@ function priorityGate(car,snapshot){
  const priority=snapshot.filter(other=>{
   if(other.id===car.id)return false;
   // A minor approach yields to ALL main-road movements, including turns.
-  if(car.track.roadPriority==="minor"&&other.track.roadPriority==="main")return true;
+  if(!signalsEnabled&&car.track.roadPriority==="minor"&&other.track.roadPriority==="main")return true;
   // Among approaches of the same status, left turn yields to opposing
   // through traffic and right turns. Opposing left turns do not claim priority.
-  if(car.track.roadPriority===other.track.roadPriority&&leftTurn(car.track)&&opposingTracks(car.track,other.track)&&!leftTurn(other.track))return true;
+  if((signalsEnabled||car.track.roadPriority===other.track.roadPriority)&&leftTurn(car.track)&&opposingTracks(car.track,other.track)&&!leftTurn(other.track))return true;
   return yieldRules.some(rule=>rule.from===car.track.id&&rule.to.includes(other.track.id));
  });
  if(!priority.length)return null;
@@ -334,7 +334,7 @@ function locateSignals(parts){
 }
 const signalVisuals=new Map();
 function renderSignalLights(){
- lights.replaceChildren();return; // Unsignalized test mode: no signal heads
+ if(!signalsEnabled){lights.replaceChildren();signalVisuals.clear();return;}
  for(const loc of signalLocations){
    if(freeSignals.has(loc.id))continue;
   let visual=signalVisuals.get(loc.id);
@@ -355,15 +355,16 @@ function renderSignalLights(){
  }
 }
 function requestSignal(id){
- if(!controller||freeSignals.has(id))return;
+ if(!signalsEnabled||!controller||freeSignals.has(id))return;
  if(!$("manual").checked){$("state").textContent="Nejprve zapni ruční ovládání.";return;}
  const ok=controller.requestSignal(id);
  $("state").textContent=ok?"Vyžádána zelená pro "+id+" (bezpečné přepnutí).":"Tento semafor už má zelenou.";
 }
 function lightIsGreen(signal){return freeSignals.has(signal)||controller?.state(signal)==="green";}
+function formatTime(seconds){const n=Math.floor(seconds);return String(Math.floor(n/3600)).padStart(2,"0")+":"+String(Math.floor(n/60)%60).padStart(2,"0")+":"+String(n%60).padStart(2,"0");}
 function animate(now){
  if(!last)last=now;const real=Math.min(.05,(now-last)/1000);last=now;
- if(running){const dt=real*Number($("speed").value);clock+=dt;controller.tick(dt,active=>cars.some(c=>!freeSignals.has(c.track.signal)&&active.includes(c.track.signal)&&c.s>=c.track.stopAt&&c.s<c.track.exitStart+c.length));spawnClock+=dt;const interval=2.6/Number($("rate").value)*6;
+ if(running){const dt=real*Number($("speed").value);clock+=dt;if(signalsEnabled)controller.tick(dt,active=>cars.some(c=>!freeSignals.has(c.track.signal)&&active.includes(c.track.signal)&&c.s>=c.track.stopAt&&c.s<c.track.exitStart+c.length));spawnClock+=dt;const interval=2.6/Number($("rate").value)*6;
  while(spawnClock>=interval){spawnClock-=interval;spawn();}
  // Take one consistent snapshot so all vehicles react to the same traffic state.
  const snapshots=cars.map(c=>({...c}));
@@ -450,9 +451,20 @@ function animate(now){
   advanceVehicle(car,obstacle,dt);
   const p=position(car.track,car.s);car.el.setAttribute("transform",`translate(${p.x} ${p.y}) rotate(${p.angle})`);
  }
+ // Detect overlap of real oriented body rectangles, not buffered prediction footprints.
+ let collision=null;
+ outer:for(let i=0;i<cars.length;i++)for(let j=i+1;j<cars.length;j++){
+  if(overlaps(vehicleFootprint(cars[i],0),vehicleFootprint(cars[j],0))){
+   collision=[cars[i],cars[j]];break outer;
+  }
+ }
+ if(collision){
+  running=false;collisionLocked=true;
+  $("state").textContent="KOLIZE – běh zastaven, vozidla "+collision[0].id+" a "+collision[1].id+" · čas "+formatTime(clock);
+ }
  cars=cars.filter(c=>{if(c.s<c.track.length)return true;c.el.remove();passed++;return false;});
  }
- const stage=controller?.status();$("phase").textContent="Bez semaforů · hlavní / vedlejší";$("count").textContent=cars.length;$("passed").textContent=passed;
+ const stage=controller?.status();$("phase").textContent=signalsEnabled?(stage?"Semafory · fáze "+stage.stage+" · "+stage.mode:"Semafory"):"Bez semaforů · hlavní / vedlejší";$("elapsed").textContent=formatTime(clock);$("count").textContent=cars.length;$("passed").textContent=passed;
  renderSignalLights();
  requestAnimationFrame(animate);
 }
@@ -465,7 +477,7 @@ async function init(){
 
   signals=[...new Set(tracks.map(t=>t.signal))];if(!signals.length||!tracks.length)throw Error("Chybí potvrzené průjezdy nebo směry");
  const freeTraffic=data.uncontrolledMovements||{};
-  freeSignals=new Set(tracks.map(t=>t.signal)); // All lights completely disabled
+  freeSignals=new Set(tracks.map(t=>t.signal)); // Unsignalized mode by default
   yieldRules=freeTraffic.yieldRules||[];
   const plan={...data.signalPlan,linkedSignals:(data.signalPlan?.linkedSignals||[]).map(g=>g.filter(id=>!freeSignals.has(id))).filter(g=>g.length>1)};
  if(!plan||plan.stages.some(stage=>stage.green.some(signal=>!signals.includes(signal))))throw Error("Chybí platný fázový plán projektu");
@@ -474,9 +486,16 @@ async function init(){
  $("manual").onchange=()=>{controller.setManual($("manual").checked);$("state").textContent=$("manual").checked?"Ruční řízení: klikni na semafor.":"Automatické řízení.";};
  if(signals.some(id=>!signalLocations.some(loc=>loc.id===id)))throw Error("V SVG chybí pozice potvrzeného semaforu");
  $("state").textContent="Bez semaforů: hlavní Dukelská–Nová cesta · "+tracks.length+" průjezdů";
- $("start").onclick=()=>{running=true;$("state").textContent="Simulace běží";};
+ $("signals-enabled").onchange=()=>{
+  signalsEnabled=$("signals-enabled").checked;
+  freeSignals=signalsEnabled?new Set(freeTraffic.freeSignals||[]):new Set(tracks.map(t=>t.signal));
+  controller.reset();
+  $("state").textContent=signalsEnabled?"Semafory zapnuté – konfigurace projektu":"Semafory vypnuté – přednost hlavní / vedlejší";
+  renderSignalLights();
+ };
+ $("start").onclick=()=>{if(collisionLocked){$("state").textContent="Po kolizi spusť novou simulaci.";return;}running=true;$("state").textContent="Simulace běží";};
  $("pause").onclick=()=>{running=false;$("state").textContent="Pozastaveno";};
- $("reset").onclick=()=>{for(const c of cars)c.el.remove();cars=[];clock=0;phase=0;controller.reset();passed=0;spawnClock=0;running=true;$("state").textContent="Simulace běží";};
+ $("reset").onclick=()=>{for(const c of cars)c.el.remove();cars=[];clock=0;collisionLocked=false;phase=0;controller.reset();passed=0;spawnClock=0;running=true;$("state").textContent="Simulace běží";};
  for(const id of ["speed","rate"])$(id).oninput=()=>$(id+"-value").textContent=$(id).value+(id==="speed"?"×":"");
  requestAnimationFrame(animate);
 }
