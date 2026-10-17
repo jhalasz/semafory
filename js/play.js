@@ -2,7 +2,7 @@ import {VEHICLE_TYPES,advanceVehicle} from "./vehicle-dynamics.js?v=2.3";
 import {createSignalController} from "./signal-controller.js?v=2.4.3";
 const ns="http://www.w3.org/2000/svg",svg=document.getElementById("scene"),$=id=>document.getElementById(id);
 const map=$("map"),photoMap=$("photo-map"),markings=$("markings"),carsLayer=$("vehicles"),lights=$("lights");
-const FIXED_DT=0.01;let accumulator=0;let signalsEnabled=false,collisionLocked=false,tracks=[],cars=[],passed=0,running=false,clock=0,spawnClock=0,last=0,phase=0,nextId=1,signals=[],controller=null,signalLocations=[];
+const FIXED_DT=0.01;let accumulator=0;let collisionReport=null;let signalsEnabled=false,collisionLocked=false,tracks=[],cars=[],passed=0,running=false,clock=0,spawnClock=0,last=0,phase=0,nextId=1,signals=[],controller=null,signalLocations=[];
 function svgEl(name,attrs={}){const e=document.createElementNS(ns,name);for(const [k,v]of Object.entries(attrs))e.setAttribute(k,String(v));return e;}
 function category(el){const style=el.getAttribute("style")||"";const stroke=(el.getAttribute("stroke")||(style.match(/stroke:\s*([^;]+)/)||[])[1]||"").toLowerCase(),fill=(el.getAttribute("fill")||(style.match(/fill:\s*([^;]+)/)||[])[1]||"").toLowerCase();const c=stroke&&stroke!=="none"?stroke:fill;if(["#fff","#ffffff"].includes(c))return"markings";if(["#61cbf4","#37b5ed"].includes(c))return"lane";if(["#ffc000","#f59e0b"].includes(c))return"route";if(["#7030a0","#a855f7"].includes(c))return"boundary";if(["#00b050","#22c55e"].includes(c)||stroke==="#042433"&&fill==="#00b050")return"signal";return"map";}
 function readSvg(xml){
@@ -450,20 +450,36 @@ function animate(now){
    if(!obstacle||gap<obstacle.gap)obstacle={gap,v:0};
   }
   advanceVehicle(car,obstacle,dt);
-  const p=position(car.track,car.s);car.el.setAttribute("transform",`translate(${p.x} ${p.y}) rotate(${p.angle})`);
  }
  // Detect overlap of real oriented body rectangles, not buffered prediction footprints.
+ // Reuse the identical oriented footprint for every pair in this step.
+ const bodies=cars.map(c=>vehicleFootprint(c,0));
  let collision=null;
  outer:for(let i=0;i<cars.length;i++)for(let j=i+1;j<cars.length;j++){
-  if(overlaps(vehicleFootprint(cars[i],0),vehicleFootprint(cars[j],0))){
+  if(overlaps(bodies[i],bodies[j])){
    collision=[cars[i],cars[j]];break outer;
   }
  }
  if(collision){
   running=false;collisionLocked=true;
+  const detail=collision.map(c=>{
+   const before=snapshots.find(v=>v.id===c.id);
+   const p=position(c.track,c.s);
+   return {id:c.id,route:c.track.id,priority:c.track.roadPriority,entry:c.track.entryLane,exit:c.track.exitLane,position:Math.round(c.s*100)/100,speed:Math.round(c.v*100)/100,x:Math.round(p.x*100)/100,y:Math.round(p.y*100)/100,before:{position:before.s,speed:before.v},stopAt:c.track.stopAt,entryEnd:c.track.entryEnd,exitStart:c.track.exitStart};
+  });
+  collisionReport={time:clock,signalsEnabled,detail};
+  console.warn("Semafory collision diagnostics",collisionReport);
+  $("diagnostics").textContent=JSON.stringify(collisionReport,null,2);
+  $("diagnostics").hidden=false;
   $("state").textContent="KOLIZE – běh zastaven, vozidla "+collision[0].id+" ("+collision[0].track.id+") a "+collision[1].id+" ("+collision[1].track.id+") · čas "+formatTime(clock);
  }
  cars=cars.filter(c=>{if(c.s<c.track.length)return true;c.el.remove();passed++;return false;});
+ }
+ // Rendering happens once per animation frame, not hundreds of times per
+ // real second. The simulation itself retains exactly the same 10 ms steps.
+ for(const car of cars){
+  const p=position(car.track,car.s);
+  car.el.setAttribute("transform",`translate(${p.x} ${p.y}) rotate(${p.angle})`);
  }
  const stage=controller?.status();$("phase").textContent=signalsEnabled?(stage?"Semafory · fáze "+stage.stage+" · "+stage.mode:"Semafory"):"Bez semaforů · hlavní / vedlejší";$("elapsed").textContent=formatTime(clock);$("count").textContent=cars.length;$("passed").textContent=passed;
  renderSignalLights();
@@ -496,7 +512,7 @@ async function init(){
  };
  $("start").onclick=()=>{if(collisionLocked){$("state").textContent="Po kolizi spusť novou simulaci.";return;}running=true;$("state").textContent="Simulace běží";};
  $("pause").onclick=()=>{running=false;$("state").textContent="Pozastaveno";};
- $("reset").onclick=()=>{for(const c of cars)c.el.remove();cars=[];clock=0;accumulator=0;collisionLocked=false;phase=0;controller.reset();passed=0;spawnClock=0;running=true;$("state").textContent="Simulace běží";};
+ $("reset").onclick=()=>{for(const c of cars)c.el.remove();cars=[];clock=0;accumulator=0;collisionLocked=false;collisionReport=null;$("diagnostics").hidden=true;phase=0;controller.reset();passed=0;spawnClock=0;running=true;$("state").textContent="Simulace běží";};
  for(const id of ["speed","rate"])$(id).oninput=()=>$(id+"-value").textContent=$(id).value+(id==="speed"?"×":"");
  requestAnimationFrame(animate);
 }
