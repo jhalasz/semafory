@@ -246,138 +246,71 @@ function footprintClearance(a,b){
  return 0;
 }
 
-let conflictZones=[],freeSignals=new Set(),yieldRules=[];
+let freeSignals=new Set(),yieldRules=[];
 function headingAt(t,s){const a=position(t,Math.max(0,s-8)),b=position(t,Math.min(t.length,s+8)),d=Math.hypot(b.x-a.x,b.y-a.y)||1;return{x:(b.x-a.x)/d,y:(b.y-a.y)/d};}
 function leftTurn(t){const a=headingAt(t,t.entryEnd-10),b=headingAt(t,t.exitStart+10);return a.x*b.y-a.y*b.x<-.25;}
-function buildConflicts(){
- const result=[];
- for(let i=0;i<tracks.length;i++)for(let j=i+1;j<tracks.length;j++){
-  const a=tracks[i],b=tracks[j];
-  if(a.entryLane===b.entryLane||a.exitLane===b.exitLane)continue;
-  let count=0,sumA=0,sumB=0;
-  for(let x=a.entryEnd-12;x<a.exitStart+12;x+=5)for(let y=b.entryEnd-12;y<b.exitStart+12;y+=5){
-   const p=position(a,x),q=position(b,y);
-   if(Math.hypot(p.x-q.x,p.y-q.y)<14){count++;sumA+=x;sumB+=y;}
-  }
-  if(count){const ha=headingAt(a,a.entryEnd-10),hb=headingAt(b,b.entryEnd-10);
-   result.push({a,b,sa:sumA/count,sb:sumB/count,opposite:ha.x*hb.x+ha.y*hb.y<-.65});}
- }
- return result;
+function opposingTracks(a,b){
+ if(a===b||a.entryLane===b.entryLane)return false;
+ const x=headingAt(a,a.entryEnd-10),y=headingAt(b,b.entryEnd-10);
+ return x.x*y.x+x.y*y.y<-.65;
 }
-// Universal priority for two opposing movements joining the same exit lane.
-// The left-turning vehicle must not enter unless the priority stream can
-// continue without braking or changing course.
-function sharedExitPriority(car,snapshot){
- if(!leftTurn(car.track))return null;
- let obstacle=null;
- for(const priorityTrack of tracks){
-  if(priorityTrack===car.track||priorityTrack.entryLane===car.track.entryLane||priorityTrack.exitLane!==car.track.exitLane||leftTurn(priorityTrack))continue;
-  const u=headingAt(car.track,car.track.entryEnd-10),v=headingAt(priorityTrack,priorityTrack.entryEnd-10);
-  if(u.x*v.x+u.y*v.y>-.55)continue;
-  const conflictS=car.track.exitStart;
-  // Yield BEFORE entering the junction, not at the downstream merge.
-  const stopS=car.track.stopAt;
-  if(car.s>stopS+0.1)continue;
-  const approach=conflictS-car.s;
-  if(approach>Math.max(170,car.v*4))continue;
-  const distanceToClear=approach+car.length/2+26;
-  const acc=Math.max(3,car.spec.maxAcceleration*.45);
-  const launch=Math.min(car.v,10);
-  const clearance=(Math.sqrt(launch*launch+2*acc*distanceToClear)-launch)/acc+4;
-  for(const other of snapshot){
-   if(other.track!==priorityTrack)continue;
-   if(!lightIsGreen(other.track.signal)&&other.s<other.track.stopAt)continue;
-   const remaining=priorityTrack.exitStart-other.s;
-   if(remaining<-(other.length/2+35))continue;
-   const arrival=Math.max(0,remaining-other.length/2)/Math.max(5,other.v);
-   if(arrival>clearance+3)continue;
-   const gap=Math.max(0,stopS-car.s);
-   if(!obstacle||gap<obstacle.gap)obstacle={gap,v:0};
-  }
- }
- return obstacle;
+// Predict rectangular vehicle occupancy at a common future time. Geometry
+// belongs to the route, not to a pre-computed crossing point or exit ID.
+function predictedFootprint(car,s,margin=5){
+ return vehicleFootprint({...car,s:Math.min(car.track.length,Math.max(0,s))},margin);
 }
-function conflictAhead(car,snapshot){
- let obstacle=null;
- for(const zone of conflictZones){
-  if(car.track!==zone.a&&car.track!==zone.b)continue;
-  const own=car.track===zone.a?zone.sa:zone.sb;
-  const otherAt=car.track===zone.a?zone.sb:zone.sa;
-  const otherTrack=car.track===zone.a?zone.b:zone.a;
-  const d=own-car.s;
-  // Stop before the crossing, but never try to stop a vehicle already
-  // committed to the conflict space.
-  // Once past the junction entry, the vehicle is committed and may not
-  // be stopped by a late priority decision inside the crossing.
-  const stopS=Math.min(car.track.stopAt,own-car.length/2-16);
-  if(car.s>stopS+0.1||d>Math.max(155,car.v*4))continue;
-  for(const other of snapshot){
-   if(other.track!==otherTrack)continue;
-   const od=otherAt-other.s;
-   const left=leftTurn(car.track),otherLeft=leftTurn(other.track);
-   let mustYield=false;
-   if(zone.opposite&&left!==otherLeft)mustYield=left;
-   else if(zone.opposite&&left&&otherLeft)mustYield=false;
-   else {
-    const tOwn=d/Math.max(8,car.v),tOther=od/Math.max(8,other.v);
-    mustYield=tOther<tOwn-.3||(Math.abs(tOther-tOwn)<=.3&&other.id<car.id);
-   }
-   if(!mustYield)continue;
-   if(!lightIsGreen(other.track.signal)&&other.s<other.track.stopAt)continue;
-   // Compute the full time required for the yielding vehicle to accelerate
-   // from the line and completely clear the overlapping vehicle footprints.
-   const remaining=Math.max(0,own-stopS);
-   const traverse=Math.max(0,own-car.s)+car.length/2+other.length/2+30;
-   // Conservative crossing estimate: starting from a stop, with reduced
-   // effective acceleration through a turn and a margin for its full body.
-   const acceleration=Math.max(3,car.spec.maxAcceleration*.55);
-   const launchSpeed=Math.min(car.v,12);
-   const clearanceTime=(Math.sqrt(launchSpeed*launchSpeed+2*acceleration*traverse)-launchSpeed)/acceleration+3;
-   // A priority vehicle already across the conflict only clears it after
-   // its rear bumper passes. An approaching vehicle needs a safe time gap.
-   if(od<-(other.length/2+18))continue;
-   const arrival=od<=other.length/2?0:(od-other.length/2)/Math.max(6,other.v);
-   if(arrival>clearanceTime+3)continue;
-   const gap=Math.max(0,stopS-car.s);
-   if(!obstacle||gap<obstacle.gap)obstacle={gap,v:0};
-  }
+function overlaps(a,b){
+ const dx=b.p.x-a.p.x,dy=b.p.y-a.p.y;
+ for(const [x,y] of [[a.ux,a.uy],[a.vx,a.vy],[b.ux,b.uy],[b.vx,b.vy]]){
+  const distance=Math.abs(dx*x+dy*y);
+  const ra=a.halfL*Math.abs(a.ux*x+a.uy*y)+a.halfW*Math.abs(a.vx*x+a.vy*y);
+  const rb=b.halfL*Math.abs(b.ux*x+b.uy*y)+b.halfW*Math.abs(b.vx*x+b.vy*y);
+  if(distance>ra+rb)return false;
  }
- return obstacle;
+ return true;
 }
-
- // Yield at a physical merge: the minor stream must leave the shared lane
- // free for vehicles already there or about to reach it.
- function mergeYieldObstacle(car,snapshot){
-  let result=null;
-  for(const rule of yieldRules){
-   if(car.track.id!==rule.from)continue;
-   const stop=car.track.stopAt,remaining=stop-car.s;
-   // Once the front of the vehicle has crossed the boundary, it is
-   // committed to the merge and may not stop inside the junction.
-   if(remaining<=0||remaining>Math.max(125,car.v*3.5))continue;
-   const ownMerge=car.track.exitStart;
-   const distanceAfterStop=Math.max(0,ownMerge-stop);
-   // Include acceleration from a full stop plus the time for the REAR
-   // of this vehicle to clear the shared entry.
-   const acceleration=Math.max(5,car.spec.maxAcceleration);
-   const crossingTime=Math.sqrt(2*(distanceAfterStop+car.length+20)/acceleration)+1.5;
-   for(const other of snapshot){
-    if(!rule.to.includes(other.track.id))continue;
-    const otherDistance=other.track.exitStart-other.s;
-    // Vehicle still upstream, alongside the merge, or just past it.
-    // A car past the merge is only safe once its rear clears the entry.
-    if(otherDistance<-(other.length+32))continue;
-    const otherArrival=otherDistance<=0?0:otherDistance/Math.max(5,other.v);
-    // Guard the entire time window needed to enter AND clear the
-    // priority lane; a momentarily empty merge is not sufficient.
-    if(otherArrival>crossingTime+1.5)continue;
-    const gap=Math.max(0,remaining);
-    if(!result||gap<result.gap)result={gap,v:0};
+function predictedProgress(car,t,fromStop=false){
+ const v=fromStop?0:Math.min(car.v,car.spec.cruise);
+ const acc=Math.max(3,car.spec.maxAcceleration*.55);
+ const maxV=car.spec.cruise,until=(maxV-v)/acc;
+ return t<until?v*t+.5*acc*t*t:v*until+.5*acc*until*until+maxV*(t-until);
+}
+function priorityGate(car,snapshot){
+ const stop=car.track.stopAt;
+ // Commitment starts once the front has passed the yield/entry boundary.
+ if(car.s>stop+.1)return null;
+ const priority=snapshot.filter(other=>{
+  if(other.id===car.id)return false;
+  if(leftTurn(car.track)&&opposingTracks(car.track,other.track)&&!leftTurn(other.track))return true;
+  return yieldRules.some(rule=>rule.from===car.track.id&&rule.to.includes(other.track.id));
+ });
+ if(!priority.length)return null;
+ // At the entry line simulate a fresh launch. When approaching the line,
+ // use current speed, allowing natural braking before reaching the gate.
+ const fromStop=car.v<3;
+ const start=Math.min(car.s,stop);
+ const end=Math.min(car.track.length,car.track.exitStart+car.length+65);
+ const distance=end-start;
+ const accel=Math.max(3,car.spec.maxAcceleration*.55);
+ const timeToClear=Math.sqrt(2*distance/accel)+distance/Math.max(12,car.spec.cruise)+2;
+ const horizon=Math.min(24,Math.max(8,timeToClear+3));
+ for(const other of priority){
+  // A vehicle held at its own red light cannot claim priority until it
+  // enters, whereas a vehicle already past the signal remains relevant.
+  if(!lightIsGreen(other.track.signal)&&other.s<other.track.stopAt)continue;
+  if(other.s-other.length/2>other.track.length)continue;
+  for(let t=0;t<=horizon;t+=.3){
+   const ownS=Math.min(car.track.length,start+predictedProgress(car,t,fromStop));
+   const otherS=Math.min(other.track.length,other.s+Math.max(0,other.v)*t);
+   if(ownS>=end)break;
+   // Includes time separation, full body, and the extra clearance margin.
+   if(overlaps(predictedFootprint(car,ownS),predictedFootprint(other,otherS))){
+    return {gap:Math.max(0,stop-car.s),v:0};
    }
   }
-  return result;
  }
-
+ return null;
+}
 function spawn(){
  if(!tracks.length||cars.length>90)return;
  const t=tracks[Math.floor(Math.random()*tracks.length)];
@@ -502,12 +435,8 @@ function animate(now){
     if(!obstacle||candidate.gap<obstacle.gap)obstacle=candidate;
    }
   }
-  const exitPriority=sharedExitPriority(car,snapshots);
-  if(exitPriority&&(!obstacle||exitPriority.gap<obstacle.gap))obstacle=exitPriority;
-  const yielding=mergeYieldObstacle(car,snapshots);
-   if(yielding&&(!obstacle||yielding.gap<obstacle.gap))obstacle=yielding;
-   const crossing=conflictAhead(car,snapshots);
-   if(crossing&&(!obstacle||crossing.gap<obstacle.gap))obstacle=crossing;
+  const gate=priorityGate(car,snapshots);
+  if(gate&&(!obstacle||gate.gap<obstacle.gap))obstacle=gate;
    // A red signal acts like a stationary lead vehicle at the stop line.
   if(!lightIsGreen(car.track.signal)&&car.s<car.track.stopAt){
    const gap=car.track.stopAt-car.s;
@@ -528,7 +457,7 @@ async function init(){
  signalLocations=locateSignals(parts);
  const network=makeRoadNetwork(parts,data.directions);
  tracks=(data.movements?.movements||[]).filter(m=>m.confirmed).map(m=>makeTrack(network,m)).filter(Boolean);
- conflictZones=buildConflicts();
+
   signals=[...new Set(tracks.map(t=>t.signal))];if(!signals.length||!tracks.length)throw Error("Chybí potvrzené průjezdy nebo směry");
  const freeTraffic=data.uncontrolledMovements||{};
   freeSignals=new Set(freeTraffic.freeSignals||[]);
