@@ -468,6 +468,24 @@ function animate(now){
      }
     }
    }
+   // Follow an already merging vehicle BEFORE either route reaches its
+   // separately authored exitStart marker. Both routes join the same lane;
+   // the car physically ahead must be treated as a leader, even if it
+   // began the turn earlier or on another route. No priority rule changes.
+   if(car.track!==other.track&&car.track.exitLane===other.track.exitLane&&
+      car.s>=car.track.exitStart-105&&other.s>=other.track.exitStart-105){
+    const p=position(car.track,car.s),q=position(other.track,other.s);
+    const a=p.angle*Math.PI/180,b=q.angle*Math.PI/180;
+    const ux=Math.cos(a),uy=Math.sin(a),vx=-uy,vy=ux;
+    const dx=q.x-p.x,dy=q.y-p.y;
+    const ahead=dx*ux+dy*uy;
+    const side=Math.abs(dx*vx+dy*vy);
+    const aligned=Math.cos(a-b)>.7;
+    if(aligned&&ahead>0&&ahead<Math.max(120,car.v*3)&&
+       side<Math.max(23,(car.spec.width+other.spec.width)/2+7)){
+     delta=Math.min(delta,ahead);
+    }
+   }
    if(car.track.exitLane===other.track.exitLane&&car.s>=car.track.exitStart&&other.s>=other.track.exitStart){
     const otherExit=other.s-other.track.exitStart;
     const ourExit=car.s-car.track.exitStart;
