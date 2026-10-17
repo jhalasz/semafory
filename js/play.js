@@ -315,13 +315,15 @@ function priorityGate(car,snapshot){
    const ownArrival=(Math.sqrt(launch*launch+2*ownAcc*ownDistance)-launch)/ownAcc;
    const priorityDistance=other.track.exitStart-other.s;
    const priorityArrival=Math.max(0,priorityDistance-other.length/2)/Math.max(5,other.v);
-   const priorityCleared=other.s-other.length/2>other.track.exitStart+car.length+25;
-   // Protect both the merge entry and the downstream shared-lane headway.
-   // Waiting is required if the priority car can arrive before our rear
-   // has fully cleared the joining segment, even when its path centreline
-   // is not sampled at precisely the same simulated instant.
+   // Both safe orders are possible: join ahead of the priority car,
+   // or join BEHIND it after its rear clears the merge with headway.
+   // The previous one-sided condition incorrectly blocked the latter.
    const ownClearance=ownArrival+(car.length+other.length+30)/Math.max(10,car.spec.cruise*.65)+2;
-   if(!priorityCleared&&priorityArrival<=ownClearance+2)
+   const priorityClearDistance=other.track.exitStart+other.length/2+car.length/2+25-other.s;
+   const priorityDeparture=Math.max(0,priorityClearDistance)/Math.max(5,other.v);
+   const joinsAhead=ownClearance+2<priorityArrival;
+   const joinsBehind=ownArrival>priorityDeparture+2;
+   if(!joinsAhead&&!joinsBehind)
     return {gap:Math.max(0,stop-car.s),v:0};
   }
   for(let t=0;t<=horizon;t+=.3){
