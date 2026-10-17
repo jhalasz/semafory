@@ -264,6 +264,38 @@ function buildConflicts(){
  }
  return result;
 }
+// Universal priority for two opposing movements joining the same exit lane.
+// The left-turning vehicle must not enter unless the priority stream can
+// continue without braking or changing course.
+function sharedExitPriority(car,snapshot){
+ if(!leftTurn(car.track))return null;
+ let obstacle=null;
+ for(const priorityTrack of tracks){
+  if(priorityTrack===car.track||priorityTrack.entryLane===car.track.entryLane||priorityTrack.exitLane!==car.track.exitLane||leftTurn(priorityTrack))continue;
+  const u=headingAt(car.track,car.track.entryEnd-10),v=headingAt(priorityTrack,priorityTrack.entryEnd-10);
+  if(u.x*v.x+u.y*v.y>-.55)continue;
+  const conflictS=car.track.exitStart;
+  const stopS=Math.max(car.track.entryEnd,conflictS-car.length/2-18);
+  if(car.s>=stopS)continue;
+  const approach=conflictS-car.s;
+  if(approach>Math.max(170,car.v*4))continue;
+  const distanceToClear=approach+car.length/2+26;
+  const acc=Math.max(3,car.spec.maxAcceleration*.45);
+  const launch=Math.min(car.v,10);
+  const clearance=(Math.sqrt(launch*launch+2*acc*distanceToClear)-launch)/acc+4;
+  for(const other of snapshot){
+   if(other.track!==priorityTrack)continue;
+   if(!lightIsGreen(other.track.signal)&&other.s<other.track.stopAt)continue;
+   const remaining=priorityTrack.exitStart-other.s;
+   if(remaining<-(other.length/2+35))continue;
+   const arrival=Math.max(0,remaining-other.length/2)/Math.max(5,other.v);
+   if(arrival>clearance+3)continue;
+   const gap=Math.max(0,stopS-car.s);
+   if(!obstacle||gap<obstacle.gap)obstacle={gap,v:0};
+  }
+ }
+ return obstacle;
+}
 function conflictAhead(car,snapshot){
  let obstacle=null;
  for(const zone of conflictZones){
@@ -460,6 +492,8 @@ function animate(now){
     if(!obstacle||candidate.gap<obstacle.gap)obstacle=candidate;
    }
   }
+  const exitPriority=sharedExitPriority(car,snapshots);
+  if(exitPriority&&(!obstacle||exitPriority.gap<obstacle.gap))obstacle=exitPriority;
   const yielding=mergeYieldObstacle(car,snapshots);
    if(yielding&&(!obstacle||yielding.gap<obstacle.gap))obstacle=yielding;
    const crossing=conflictAhead(car,snapshots);
