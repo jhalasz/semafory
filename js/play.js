@@ -2,7 +2,7 @@ import {VEHICLE_TYPES,advanceVehicle} from "./vehicle-dynamics.js?v=2.5.31";
 import {createSignalController} from "./signal-controller.js?v=2.4.3";
 const ns="http://www.w3.org/2000/svg",svg=document.getElementById("scene"),$=id=>document.getElementById(id);
 const map=$("map"),photoMap=$("photo-map"),markings=$("markings"),carsLayer=$("vehicles"),lights=$("lights");
-const APP_VERSION="2.5.38";
+const APP_VERSION="2.5.39";
 const FIXED_DT=0.01;let accumulator=0,dayElapsed=0,spawnBudget=0;let collisionReport=null,selectedCarId=null;let signalsEnabled=false,collisionLocked=false,tracks=[],cars=[],passed=0,running=false,clock=0,spawnClock=0,last=0,phase=0,nextId=1,signals=[],controller=null,signalLocations=[];
 function svgEl(name,attrs={}){const e=document.createElementNS(ns,name);for(const [k,v]of Object.entries(attrs))e.setAttribute(k,String(v));return e;}
 function category(el){const style=el.getAttribute("style")||"";const stroke=(el.getAttribute("stroke")||(style.match(/stroke:\s*([^;]+)/)||[])[1]||"").toLowerCase(),fill=(el.getAttribute("fill")||(style.match(/fill:\s*([^;]+)/)||[])[1]||"").toLowerCase();const c=stroke&&stroke!=="none"?stroke:fill;if(["#fff","#ffffff"].includes(c))return"markings";if(["#61cbf4","#37b5ed"].includes(c))return"lane";if(["#ffc000","#f59e0b"].includes(c))return"route";if(["#7030a0","#a855f7"].includes(c))return"boundary";if(["#00b050","#22c55e"].includes(c)||stroke==="#042433"&&fill==="#00b050")return"signal";return"map";}
@@ -579,6 +579,7 @@ function locateSignals(parts){
  assign(0,new Set(),0,[]);
  return targets.map((t,i)=>({id:t.id,x:markers[solution[i]].x,y:markers[solution[i]].y}));
 }
+let activeSignalPlan=null;
 const signalVisuals=new Map();
 function renderSignalLights(){
  if(!signalsEnabled){lights.replaceChildren();signalVisuals.clear();return;}
@@ -605,7 +606,8 @@ function requestSignal(id){
  if(!signalsEnabled||!controller||freeSignals.has(id))return;
  if(!$("manual").checked){$("state").textContent="Nejprve zapni ruční ovládání.";return;}
  const ok=controller.requestSignal(id);
- $("state").textContent=ok?"Vyžádána zelená pro "+id+" (bezpečné přepnutí).":"Tento semafor už má zelenou.";
+ const group=(activeSignalPlan?.linkedSignals||[]).find(g=>g.includes(id))||[id];
+ $("state").textContent=ok?"Požadavek: zelená pro "+group.join(" + ")+"; probíhá bezpečné přepnutí.":"Skupina "+group.join(" + ")+" má zelenou nebo je právě aktivní.";
 }
 function lightIsGreen(signal){return freeSignals.has(signal)||controller?.state(signal)==="green";}
 function updateInspector(){
@@ -811,7 +813,8 @@ async function init(){
  const freeTraffic=data.uncontrolledMovements||{};
   freeSignals=new Set(tracks.map(t=>t.signal)); // Unsignalized mode by default
   yieldRules=freeTraffic.yieldRules||[];
-  const plan={...data.signalPlan,linkedSignals:(data.signalPlan?.linkedSignals||[]).map(g=>g.filter(id=>!freeSignals.has(id))).filter(g=>g.length>1)};
+  const plan={...data.signalPlan,linkedSignals:data.signalPlan?.linkedSignals||[]};
+ activeSignalPlan=plan;
  if(!plan||plan.stages.some(stage=>stage.green.some(signal=>!signals.includes(signal))))throw Error("Chybí platný fázový plán projektu");
  controller=createSignalController(plan);
  controller.setManual($("manual").checked);
@@ -822,6 +825,7 @@ async function init(){
   signalsEnabled=$("signals-enabled").checked;accumulator=0;
   freeSignals=signalsEnabled?new Set(freeTraffic.freeSignals||[]):new Set(tracks.map(t=>t.signal));
   controller.reset();
+  controller.setManual($("manual").checked);
   $("state").textContent=signalsEnabled?"Semafory zapnuté – konfigurace projektu":"Semafory vypnuté – přednost hlavní / vedlejší";
   renderSignalLights();
  };
