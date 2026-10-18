@@ -454,8 +454,8 @@ function priorityGate(car,snapshot,trace=null){
   for(let tick=0;tick<=Math.ceil(horizon/.1);tick++){
    if(tick){advanceVehicle(mainGhost,null,.1);advanceVehicle(cautiousGhost,null,.1);advanceVehicle(otherGhost,null,.1);}
    const t=tick*.1;
-   const ownS=Math.min(car.track.length,start+mainGhost.s);
-   const cautiousS=Math.min(car.track.length,start+Math.min(mainGhost.s,cautiousGhost.s*.72));
+   const ownS=Math.min(end,start+mainGhost.s);
+   const cautiousS=Math.min(end,start+Math.min(mainGhost.s,cautiousGhost.s*.72));
    const otherS=other.s+otherGhost.s;
    // A priority vehicle is no longer an obstacle after its rear has
    // exited the map. Never clamp the ghost to its route endpoint: that
