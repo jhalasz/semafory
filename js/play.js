@@ -2,7 +2,7 @@ import {VEHICLE_TYPES,advanceVehicle} from "./vehicle-dynamics.js?v=2.5.31";
 import {createSignalController} from "./signal-controller.js?v=2.4.3";
 const ns="http://www.w3.org/2000/svg",svg=document.getElementById("scene"),$=id=>document.getElementById(id);
 const map=$("map"),photoMap=$("photo-map"),markings=$("markings"),carsLayer=$("vehicles"),lights=$("lights");
-const APP_VERSION="2.5.45";
+const APP_VERSION="2.5.46";
 const FIXED_DT=0.01;let accumulator=0,dayElapsed=0,spawnBudget=0;let collisionReport=null,selectedCarId=null;let signalsEnabled=false,collisionLocked=false,tracks=[],cars=[],passed=0,routeStats=new Map(),running=false,clock=0,spawnClock=0,last=0,phase=0,nextId=1,signals=[],controller=null,signalLocations=[];
 function svgEl(name,attrs={}){const e=document.createElementNS(ns,name);for(const [k,v]of Object.entries(attrs))e.setAttribute(k,String(v));return e;}
 function category(el){const style=el.getAttribute("style")||"";const stroke=(el.getAttribute("stroke")||(style.match(/stroke:\s*([^;]+)/)||[])[1]||"").toLowerCase(),fill=(el.getAttribute("fill")||(style.match(/fill:\s*([^;]+)/)||[])[1]||"").toLowerCase();const c=stroke&&stroke!=="none"?stroke:fill;if(["#fff","#ffffff"].includes(c))return"markings";if(["#61cbf4","#37b5ed"].includes(c))return"lane";if(["#ffc000","#f59e0b"].includes(c))return"route";if(["#7030a0","#a855f7"].includes(c))return"boundary";if(["#00b050","#22c55e"].includes(c)||stroke==="#042433"&&fill==="#00b050")return"signal";return"map";}
@@ -247,7 +247,7 @@ function footprintClearance(a,b){
  return 0;
 }
 
-let freeSignals=new Set(),yieldRules=[];
+let freeSignals=new Set(),yieldRules=[],freeTraffic={};
 function headingAt(t,s){const a=position(t,Math.max(0,s-8)),b=position(t,Math.min(t.length,s+8)),d=Math.hypot(b.x-a.x,b.y-a.y)||1;return{x:(b.x-a.x)/d,y:(b.y-a.y)/d};}
 function leftTurn(t){const a=headingAt(t,t.entryEnd-10),b=headingAt(t,t.exitStart+10);return a.x*b.y-a.y*b.x<-.25;}
 function opposingTracks(a,b){
@@ -858,7 +858,7 @@ async function init(){
  routeStats=new Map(tracks.map(t=>[t.id,0]));
 
   signals=[...new Set(tracks.map(t=>t.signal))];if(!signals.length||!tracks.length)throw Error("Chybí potvrzené průjezdy nebo směry");
- const freeTraffic=data.uncontrolledMovements||{};
+ freeTraffic=data.uncontrolledMovements||{};
   freeSignals=new Set(tracks.map(t=>t.signal)); // Unsignalized mode by default
   yieldRules=freeTraffic.yieldRules||[];
   const plan={...data.signalPlan,linkedSignals:data.signalPlan?.linkedSignals||[]};
