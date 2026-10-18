@@ -1,8 +1,8 @@
-import {VEHICLE_TYPES,advanceVehicle} from "./vehicle-dynamics.js?v=2.3";
+import {VEHICLE_TYPES,advanceVehicle} from "./vehicle-dynamics.js?v=2.5.31";
 import {createSignalController} from "./signal-controller.js?v=2.4.3";
 const ns="http://www.w3.org/2000/svg",svg=document.getElementById("scene"),$=id=>document.getElementById(id);
 const map=$("map"),photoMap=$("photo-map"),markings=$("markings"),carsLayer=$("vehicles"),lights=$("lights");
-const APP_VERSION="2.5.30";
+const APP_VERSION="2.5.31";
 const FIXED_DT=0.01;let accumulator=0,dayElapsed=0,spawnBudget=0;let collisionReport=null,selectedCarId=null;let signalsEnabled=false,collisionLocked=false,tracks=[],cars=[],passed=0,running=false,clock=0,spawnClock=0,last=0,phase=0,nextId=1,signals=[],controller=null,signalLocations=[];
 function svgEl(name,attrs={}){const e=document.createElementNS(ns,name);for(const [k,v]of Object.entries(attrs))e.setAttribute(k,String(v));return e;}
 function category(el){const style=el.getAttribute("style")||"";const stroke=(el.getAttribute("stroke")||(style.match(/stroke:\s*([^;]+)/)||[])[1]||"").toLowerCase(),fill=(el.getAttribute("fill")||(style.match(/fill:\s*([^;]+)/)||[])[1]||"").toLowerCase();const c=stroke&&stroke!=="none"?stroke:fill;if(["#fff","#ffffff"].includes(c))return"markings";if(["#61cbf4","#37b5ed"].includes(c))return"lane";if(["#ffc000","#f59e0b"].includes(c))return"route";if(["#7030a0","#a855f7"].includes(c))return"boundary";if(["#00b050","#22c55e"].includes(c)||stroke==="#042433"&&fill==="#00b050")return"signal";return"map";}
@@ -389,7 +389,7 @@ function recordTelemetry(car,reason,obstacle=null,gate=null,force=false){
  car.lastTelemetryTick=tick;car.lastTelemetryState=state;
 }
 function exportDiagnostics(){
- const payload={version:APP_VERSION,clock,signalsEnabled,dayHour:dayHour(),dayElapsed,dayAcceleration:DAY_ACCELERATION,trafficProfile:trafficProfile(dayHour()),intensityMultiplier:Number($("rate").value),collision:collisionReport,
+ const payload={version:APP_VERSION,metersPerSvgUnit:0.125,speedLimitKmH:50,clock,signalsEnabled,dayHour:dayHour(),dayElapsed,dayAcceleration:DAY_ACCELERATION,trafficProfile:trafficProfile(dayHour()),intensityMultiplier:Number($("rate").value),collision:collisionReport,
   cars:cars.map(c=>({id:c.id,route:c.track.id,entryLane:c.track.entryLane,
    exitLane:c.track.exitLane,roadPriority:c.track.roadPriority,type:c.spec===VEHICLE_TYPES.truck?"truck":"car",
    length:c.length,enteredAt:c.enteredAt,entryDecision:c.entryDecision||null,history:c.history}))};
@@ -439,8 +439,8 @@ function spawn(){
  const available=tracks.filter(t=>!cars.some(c=>c.track.entryLane===t.entryLane&&c.s-c.length/2<65));
  if(!available.length)return false;
  const t=sampleTrafficMovement(available);
- const truck=Math.random()<.09,spec=truck?VEHICLE_TYPES.truck:VEHICLE_TYPES.car;const g=svgEl("g"),body=svgEl("rect",{x:truck?-17:-12,y:truck?-6:-5,width:truck?34:24,height:truck?12:10,rx:2,fill:truck?"#f0c673":["#fff5bf","#e14e5a","#61b9ef","#9ee08e"][Math.floor(Math.random()*4)],stroke:"#172536","stroke-width":1.5});
- g.append(body);g.append(svgEl("rect",{x:truck?-23:-19,y:-17,width:truck?46:38,height:34,fill:"transparent","pointer-events":"all"}));carsLayer.append(g);const car={id:nextId++,track:t,s:0,v:spec.cruise,length:spec.length,spec,el:g,
+ const truck=Math.random()<.09,spec=truck?VEHICLE_TYPES.truck:VEHICLE_TYPES.car;const g=svgEl("g"),body=svgEl("rect",{x:-spec.length/2,y:-spec.width/2,width:spec.length,height:spec.width,rx:2,fill:truck?"#f0c673":["#fff5bf","#e14e5a","#61b9ef","#9ee08e"][Math.floor(Math.random()*4)],stroke:"#172536","stroke-width":1.5});
+ g.append(body);g.append(svgEl("rect",{x:-spec.length/2-6,y:-spec.width/2-8,width:spec.length+12,height:spec.width+16,fill:"transparent","pointer-events":"all"}));carsLayer.append(g);const car={id:nextId++,track:t,s:0,v:spec.cruise,length:spec.length,spec,el:g,
   enteredAt:clock,history:[],lastTelemetryTick:-1,lastTelemetryState:""};
  car.el.style.cursor="pointer";car.el.addEventListener("click",e=>{e.stopPropagation();selectedCarId=car.id;updateInspector();});
  cars.push(car);recordTelemetry(car,"spawn",null,null,true);return true;
