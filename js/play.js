@@ -2,8 +2,8 @@ import {VEHICLE_TYPES,advanceVehicle} from "./vehicle-dynamics.js?v=2.3";
 import {createSignalController} from "./signal-controller.js?v=2.4.3";
 const ns="http://www.w3.org/2000/svg",svg=document.getElementById("scene"),$=id=>document.getElementById(id);
 const map=$("map"),photoMap=$("photo-map"),markings=$("markings"),carsLayer=$("vehicles"),lights=$("lights");
-const APP_VERSION="2.5.27";
-const FIXED_DT=0.01;let accumulator=0;let collisionReport=null,selectedCarId=null;let signalsEnabled=false,collisionLocked=false,tracks=[],cars=[],passed=0,running=false,clock=0,spawnClock=0,last=0,phase=0,nextId=1,signals=[],controller=null,signalLocations=[];
+const APP_VERSION="2.5.28";
+const FIXED_DT=0.01;let accumulator=0,dayElapsed=0,spawnBudget=0;let collisionReport=null,selectedCarId=null;let signalsEnabled=false,collisionLocked=false,tracks=[],cars=[],passed=0,running=false,clock=0,spawnClock=0,last=0,phase=0,nextId=1,signals=[],controller=null,signalLocations=[];
 function svgEl(name,attrs={}){const e=document.createElementNS(ns,name);for(const [k,v]of Object.entries(attrs))e.setAttribute(k,String(v));return e;}
 function category(el){const style=el.getAttribute("style")||"";const stroke=(el.getAttribute("stroke")||(style.match(/stroke:\s*([^;]+)/)||[])[1]||"").toLowerCase(),fill=(el.getAttribute("fill")||(style.match(/fill:\s*([^;]+)/)||[])[1]||"").toLowerCase();const c=stroke&&stroke!=="none"?stroke:fill;if(["#fff","#ffffff"].includes(c))return"markings";if(["#61cbf4","#37b5ed"].includes(c))return"lane";if(["#ffc000","#f59e0b"].includes(c))return"route";if(["#7030a0","#a855f7"].includes(c))return"boundary";if(["#00b050","#22c55e"].includes(c)||stroke==="#042433"&&fill==="#00b050")return"signal";return"map";}
 function readSvg(xml){
@@ -389,7 +389,7 @@ function recordTelemetry(car,reason,obstacle=null,gate=null,force=false){
  car.lastTelemetryTick=tick;car.lastTelemetryState=state;
 }
 function exportDiagnostics(){
- const payload={version:APP_VERSION,clock,signalsEnabled,collision:collisionReport,
+ const payload={version:APP_VERSION,clock,signalsEnabled,dayHour:dayHour(),dayElapsed,dayAcceleration:DAY_ACCELERATION,trafficProfile:trafficProfile(dayHour()),intensityMultiplier:Number($("rate").value),collision:collisionReport,
   cars:cars.map(c=>({id:c.id,route:c.track.id,entryLane:c.track.entryLane,
    exitLane:c.track.exitLane,roadPriority:c.track.roadPriority,type:c.spec===VEHICLE_TYPES.truck?"truck":"car",
    length:c.length,enteredAt:c.enteredAt,entryDecision:c.entryDecision||null,history:c.history}))};
@@ -398,6 +398,31 @@ function exportDiagnostics(){
  link.href=url;link.download="semafory-"+APP_VERSION+"-diagnostika-"+formatTime(clock).replaceAll(":","-")+".json";
  document.body.append(link);link.click();link.remove();
  setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+// Hourly cordon OD movements for profiles {1,2}<->{4,5}, 7:00–17:00.
+// All 10 measured values are a RELATIVE temporal shape, not absolute
+// Massag traffic counts. Outside that window the curve is an estimate.
+const CORDON_HOURLY=Object.freeze([187,163,151,128,113,151,152,230,234,183]);
+const CORDON_AVG=CORDON_HOURLY.reduce((a,b)=>a+b,0)/CORDON_HOURLY.length;
+const DAY_HOURS=24,REAL_DAY_SECONDS=600,DAY_ACCELERATION=DAY_HOURS*3600/REAL_DAY_SECONDS;
+function startingHour(){
+ const [h,m]=($("start-time")?.value||"07:00").split(":").map(Number);
+ return Number.isFinite(h)&&Number.isFinite(m)?(h+m/60)%24:7;
+}
+function dayHour(){
+ return (startingHour()+dayElapsed*DAY_ACCELERATION/3600)%24;
+}
+function trafficProfile(hour){
+ // Empirical measured 07–17; off-period coefficients intentionally
+ // estimated (no claim of having surveyed evening/night Massag traffic).
+ const shape=[.22,.14,.10,.09,.12,.23,.55,...CORDON_HOURLY.map(n=>n/CORDON_AVG),.68,.57,.46,.37,.32,.27,.24];
+ const i=Math.floor(hour)%24,f=hour-i;
+ return shape[i]*(1-f)+shape[(i+1)%24]*f;
+}
+function updateDayClock(){
+ const h=dayHour(),hours=Math.floor(h),minutes=Math.floor((h-hours)*60);
+ const el=$("day-time");if(el)el.textContent=String(hours).padStart(2,"0")+":"+String(minutes).padStart(2,"0");
+ const mul=$("current-profile");if(mul)mul.textContent=trafficProfile(h).toFixed(2)+"×";
 }
 const TRAFFIC_SURVEY_MOVEMENTS=Object.freeze({T01:2356,T02:2077,T03:1323,T04:1767,T05:779,T06:758});
 function sampleTrafficMovement(){
@@ -476,9 +501,14 @@ function updateInspector(){
 function formatTime(seconds){const n=Math.floor(seconds);return String(Math.floor(n/3600)).padStart(2,"0")+":"+String(Math.floor(n/60)%60).padStart(2,"0")+":"+String(n%60).padStart(2,"0");}
 function animate(now){
  if(!last)last=now;const real=Math.min(.05,(now-last)/1000);last=now;
- if(running)accumulator+=real*Number($("speed").value);
- while(running&&accumulator>=FIXED_DT){const dt=FIXED_DT;accumulator-=FIXED_DT;clock+=dt;if(signalsEnabled)controller.tick(dt,active=>cars.some(c=>!freeSignals.has(c.track.signal)&&active.includes(c.track.signal)&&c.s>=c.track.stopAt&&c.s<c.track.exitStart+c.length));spawnClock+=dt;const interval=2.6/Number($("rate").value)*6;
- while(spawnClock>=interval){spawnClock-=interval;spawn();}
+ if(running){accumulator+=real*Number($("speed").value);dayElapsed+=real;}
+ updateDayClock();
+ while(running&&accumulator>=FIXED_DT){const dt=FIXED_DT;accumulator-=FIXED_DT;clock+=dt;if(signalsEnabled)controller.tick(dt,active=>cars.some(c=>!freeSignals.has(c.track.signal)&&active.includes(c.track.signal)&&c.s>=c.track.stopAt&&c.s<c.track.exitStart+c.length));// Spawn budget is linked to real elapsed time, not physics speed.
+ // Scaling to the 24h clock changes the distribution, but does NOT
+ // attempt to inject a whole day's vehicles into a 10-minute road model.
+ const currentRate=trafficProfile(dayHour())*Number($("rate").value)/2.6;
+ spawnBudget+=dt/Math.max(1,Number($("speed").value))*currentRate;
+ while(spawnBudget>=1){spawnBudget-=1;spawn();}
  // Take one consistent snapshot so all vehicles react to the same traffic state.
  const snapshots=cars.map(c=>({...c}));
  for(const car of cars){
@@ -659,8 +689,10 @@ async function init(){
  $("export-diagnostics").onclick=exportDiagnostics;
  $("inspect-toggle").onclick=()=>{if(selectedCarId!==null&&!$("vehicle-inspector").hidden){selectedCarId=null;updateInspector();return;}selectedCarId=(cars.find(c=>c.v<2)||cars[0])?.id??null;updateInspector();};
  $("inspect-select").onchange=()=>{selectedCarId=Number($("inspect-select").value);updateInspector();};
- $("reset").onclick=()=>{for(const c of cars)c.el.remove();cars=[];selectedCarId=null;clock=0;accumulator=0;collisionLocked=false;collisionReport=null;$("diagnostics").hidden=true;phase=0;controller.reset();passed=0;spawnClock=0;running=true;$("state").textContent="Simulace běží";};
- for(const id of ["speed","rate"])$(id).oninput=()=>$(id+"-value").textContent=$(id).value+(id==="speed"?"×":"");
+ $("reset").onclick=()=>{for(const c of cars)c.el.remove();cars=[];selectedCarId=null;clock=0;accumulator=0;dayElapsed=0;spawnBudget=0;collisionLocked=false;collisionReport=null;$("diagnostics").hidden=true;phase=0;controller.reset();passed=0;spawnClock=0;running=true;$("state").textContent="Simulace běží";};
+ for(const id of ["speed","rate"])$(id).oninput=()=>$(id+"-value").textContent=$(id).value+"×";
+ $("start-time").onchange=()=>{if(!running&&clock===0)updateDayClock();};
+ updateDayClock();
  requestAnimationFrame(animate);
 }
 init().catch(err=>{$("state").textContent="Chyba: "+err.message;console.error(err);});
