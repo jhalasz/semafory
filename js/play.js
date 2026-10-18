@@ -2,7 +2,7 @@ import {VEHICLE_TYPES,advanceVehicle} from "./vehicle-dynamics.js?v=2.5.31";
 import {createSignalController} from "./signal-controller.js?v=2.4.3";
 const ns="http://www.w3.org/2000/svg",svg=document.getElementById("scene"),$=id=>document.getElementById(id);
 const map=$("map"),photoMap=$("photo-map"),markings=$("markings"),carsLayer=$("vehicles"),lights=$("lights");
-const APP_VERSION="2.5.37";
+const APP_VERSION="2.5.38";
 const FIXED_DT=0.01;let accumulator=0,dayElapsed=0,spawnBudget=0;let collisionReport=null,selectedCarId=null;let signalsEnabled=false,collisionLocked=false,tracks=[],cars=[],passed=0,running=false,clock=0,spawnClock=0,last=0,phase=0,nextId=1,signals=[],controller=null,signalLocations=[];
 function svgEl(name,attrs={}){const e=document.createElementNS(ns,name);for(const [k,v]of Object.entries(attrs))e.setAttribute(k,String(v));return e;}
 function category(el){const style=el.getAttribute("style")||"";const stroke=(el.getAttribute("stroke")||(style.match(/stroke:\s*([^;]+)/)||[])[1]||"").toLowerCase(),fill=(el.getAttribute("fill")||(style.match(/fill:\s*([^;]+)/)||[])[1]||"").toLowerCase();const c=stroke&&stroke!=="none"?stroke:fill;if(["#fff","#ffffff"].includes(c))return"markings";if(["#61cbf4","#37b5ed"].includes(c))return"lane";if(["#ffc000","#f59e0b"].includes(c))return"route";if(["#7030a0","#a855f7"].includes(c))return"boundary";if(["#00b050","#22c55e"].includes(c)||stroke==="#042433"&&fill==="#00b050")return"signal";return"map";}
@@ -494,14 +494,35 @@ function spawn(){
  cars.push(car);recordTelemetry(car,"spawn",null,null,true);return true;
 }
 function locateSignals(parts){
- // Signal marker order is the canonical S01, S02 ... identifier order.
- // The group transforms are accounted for in SVG screen-to-viewBox coordinates.
+ // SVG document order is not semantically stable. Match each actual signal
+ // glyph to the stop line of the movement it controls, using a minimum
+ // total-distance assignment. This survives exported SVG element reordering.
  const inverse=svg.getScreenCTM().inverse();
- return parts.signal.map((node,i)=>{
-  const box=node.getBBox(),center=new DOMPoint(box.x+box.width/2,box.y+box.height/2);
-  const point=center.matrixTransform(inverse.multiply(node.getScreenCTM()));
-  return {id:"S"+String(i+1).padStart(2,"0"),x:point.x,y:point.y};
+ const markers=parts.signal.map(node=>{
+  const box=node.getBBox(),p=new DOMPoint(box.x+box.width/2,box.y+box.height/2);
+  return p.matrixTransform(inverse.multiply(node.getScreenCTM()));
  });
+ const targets=[...new Set(tracks.map(t=>t.signal))].map(id=>{
+  const group=tracks.filter(t=>t.signal===id);
+  const positions=group.map(t=>position(t,t.stopAt));
+  return {id,positions};
+ });
+ if(markers.length<targets.length)throw Error("Nedostatek značek semaforů v mapě");
+ let best=Infinity,solution=null;
+ const assign=(i,used,score,selection)=>{
+  if(i===targets.length){if(score<best){best=score;solution=selection.slice();}return;}
+  for(let j=0;j<markers.length;j++){
+   if(used.has(j))continue;
+   const m=markers[j];
+   const dist=Math.min(...targets[i].positions.map(p=>Math.hypot(p.x-m.x,p.y-m.y)));
+   const total=score+dist;
+   if(total>=best)continue;
+   used.add(j);selection.push(j);assign(i+1,used,total,selection);
+   selection.pop();used.delete(j);
+  }
+ };
+ assign(0,new Set(),0,[]);
+ return targets.map((t,i)=>({id:t.id,x:markers[solution[i]].x,y:markers[solution[i]].y}));
 }
 const signalVisuals=new Map();
 function renderSignalLights(){
@@ -726,9 +747,9 @@ function animate(now){
 async function init(){
  const response=await fetch("./projects/massag-4.json",{cache:"no-store"});if(!response.ok)throw Error("Veřejný projekt není dostupný");
  const data=await response.json(),parts=readSvg(data.svg.content);
- signalLocations=locateSignals(parts);
  const network=makeRoadNetwork(parts,data.directions);
  tracks=(data.movements?.movements||[]).filter(m=>m.confirmed).map(m=>makeTrack(network,m)).filter(Boolean);
+ signalLocations=locateSignals(parts);
 
   signals=[...new Set(tracks.map(t=>t.signal))];if(!signals.length||!tracks.length)throw Error("Chybí potvrzené průjezdy nebo směry");
  const freeTraffic=data.uncontrolledMovements||{};
