@@ -611,8 +611,17 @@ function activateController(){
  $("manual").disabled=experimentalMode();
  freeSignals=signalsEnabled?new Set(freeTraffic.freeSignals||[]):new Set(tracks.map(t=>t.signal));
 }
+function renderSignalPanel(){
+ const panel=$("signal-panel");if(!panel)return;
+ panel.hidden=!signalsEnabled;
+ for(const button of panel.querySelectorAll("button[data-signal]")){
+  const state=controller?.state(button.dataset.signal)||"red";
+  button.textContent=button.dataset.name+" · "+(state==="green"?"ZELENÁ":state==="red"?"ČERVENÁ":state.toUpperCase());
+  button.style.background=state==="green"?"#146d37":state==="red"?"#8c2634":"#976811";
+ }
+}
 function renderSignalLights(){
- if(!signalsEnabled){lights.replaceChildren();signalVisuals.clear();return;}
+ if(!signalsEnabled){lights.replaceChildren();signalVisuals.clear();renderSignalPanel();return;}
  for(const loc of signalLocations){
    if(freeSignals.has(loc.id))continue;
   let visual=signalVisuals.get(loc.id);
@@ -631,6 +640,7 @@ function renderSignalLights(){
   ["#f43f46","#ffbf37","#2bdf64"].forEach((color,i)=>visual.lamps[i].setAttribute("fill",active[i]?color:"#343940"));
   visual.title.textContent=loc.id+" – "+state+(experimentalMode()?" · kliknutím přepnout červená/zelená":" · kliknutím vyžádat zelenou");
  }
+ renderSignalPanel();
 }
 function requestSignal(id){
  if(!signalsEnabled||!controller||freeSignals.has(id))return;
@@ -858,6 +868,7 @@ async function init(){
  unrestrictedController=makeUnrestrictedController(signals);
  signalsEnabled=$("signals-enabled").checked;
  activateController();
+ for(const btn of $("signal-panel").querySelectorAll("button[data-signal]"))btn.onclick=()=>requestSignal(btn.dataset.signal);
  $("manual").onchange=()=>{controller.setManual($("manual").checked);$("state").textContent=$("manual").checked?"Ruční řízení: klikni na semafor.":"Automatické řízení.";};
  $("unrestricted").onchange=()=>{
   activateController();
