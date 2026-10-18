@@ -271,7 +271,7 @@ function overlaps(a,b){
 }
 function predictedProgress(car,t,fromStop=false){
  const v=fromStop?0:Math.min(car.v,car.spec.cruise);
- const acc=Math.max(3,car.spec.maxAcceleration*.55);
+ const acc=Math.max(3,car.spec.maxAcceleration);
  const maxV=car.spec.cruise,until=(maxV-v)/acc;
  return t<until?v*t+.5*acc*t*t:v*until+.5*acc*until*until+maxV*(t-until);
 }
@@ -304,28 +304,22 @@ function priorityGate(car,snapshot,trace=null){
   // enters, whereas a vehicle already past the signal remains relevant.
   if(!lightIsGreen(other.track.signal)&&other.s<other.track.stopAt)continue;
   if(other.s-other.length/2>other.track.length)continue;
-  // Shared-exit merge requires an ordering decision BEFORE the yielding
-  // movement crosses its entry boundary. The ordinary footprint samples
-  // alone can miss a fast priority vehicle catching a slow launch.
-  if(car.track.exitLane===other.track.exitLane&&
-     car.track.entryLane!==other.track.entryLane){
-   const exit=car.track.exitStart;
-   const ownDistance=Math.max(0,exit-start);
-   const ownAcc=Math.max(3,car.spec.maxAcceleration*.55);
-   const launch=fromStop?0:Math.min(car.v,car.spec.cruise);
-   const ownArrival=(Math.sqrt(launch*launch+2*ownAcc*ownDistance)-launch)/ownAcc;
-   const priorityDistance=other.track.exitStart-other.s;
-   const priorityArrival=Math.max(0,priorityDistance-other.length/2)/Math.max(5,other.v);
-   // Both safe orders are possible: join ahead of the priority car,
-   // or join BEHIND it after its rear clears the merge with headway.
-   // The previous one-sided condition incorrectly blocked the latter.
-   const ownClearance=ownArrival+(car.length+other.length+30)/Math.max(10,car.spec.cruise*.65)+2;
-   const priorityClearDistance=other.track.exitStart+other.length/2+car.length/2+25-other.s;
-   const priorityDeparture=Math.max(0,priorityClearDistance)/Math.max(5,other.v);
-   const joinsAhead=ownClearance+2<priorityArrival;
-   const joinsBehind=ownArrival>priorityDeparture+2;
-   if(!joinsAhead&&!joinsBehind){if(trace)trace.blocker={id:other.id,route:other.track.id,rule:"Časový odstup ve společném výjezdovém pruhu",ownArrival:+ownArrival.toFixed(2),priorityArrival:+priorityArrival.toFixed(2),priorityDeparture:+priorityDeparture.toFixed(2),ownClearance:+ownClearance.toFixed(2),joinsAhead,joinsBehind};
-    return {gap:Math.max(0,stop-car.s),v:0};}
+  // A stationary priority vehicle still holds its right of way. This is
+  // based on future physical route conflict, not a distant SVG exit boundary.
+  if(other.v<2&&other.s<=other.track.exitStart+other.length){
+   let conflicts=false;
+   const ownLimit=Math.min(car.track.length,car.track.exitStart+car.length+15);
+   const otherLimit=Math.min(other.track.length,other.track.exitStart+other.length+15);
+   for(let ownS=stop;ownS<=ownLimit&&!conflicts;ownS+=12){
+    const ownFoot=predictedFootprint(car,ownS);
+    for(let otherS=Math.max(other.s,other.track.stopAt);otherS<=otherLimit;otherS+=12){
+     if(overlaps(ownFoot,predictedFootprint(other,otherS))){conflicts=true;break;}
+    }
+   }
+   if(conflicts){
+    if(trace)trace.blocker={id:other.id,route:other.track.id,rule:"Stojící vozidlo s předností na konfliktní trajektorii"};
+    return {gap:Math.max(0,stop-car.s),v:0};
+   }
   }
   for(let t=0;t<=horizon;t+=.3){
    const ownS=Math.min(car.track.length,start+predictedProgress(car,t,fromStop));
