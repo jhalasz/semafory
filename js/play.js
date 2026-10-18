@@ -2,7 +2,7 @@ import {VEHICLE_TYPES,advanceVehicle} from "./vehicle-dynamics.js?v=2.5.31";
 import {createSignalController} from "./signal-controller.js?v=2.4.3";
 const ns="http://www.w3.org/2000/svg",svg=document.getElementById("scene"),$=id=>document.getElementById(id);
 const map=$("map"),photoMap=$("photo-map"),markings=$("markings"),carsLayer=$("vehicles"),lights=$("lights");
-const APP_VERSION="2.5.35";
+const APP_VERSION="2.5.36";
 const FIXED_DT=0.01;let accumulator=0,dayElapsed=0,spawnBudget=0;let collisionReport=null,selectedCarId=null;let signalsEnabled=false,collisionLocked=false,tracks=[],cars=[],passed=0,running=false,clock=0,spawnClock=0,last=0,phase=0,nextId=1,signals=[],controller=null,signalLocations=[];
 function svgEl(name,attrs={}){const e=document.createElementNS(ns,name);for(const [k,v]of Object.entries(attrs))e.setAttribute(k,String(v));return e;}
 function category(el){const style=el.getAttribute("style")||"";const stroke=(el.getAttribute("stroke")||(style.match(/stroke:\s*([^;]+)/)||[])[1]||"").toLowerCase(),fill=(el.getAttribute("fill")||(style.match(/fill:\s*([^;]+)/)||[])[1]||"").toLowerCase();const c=stroke&&stroke!=="none"?stroke:fill;if(["#fff","#ffffff"].includes(c))return"markings";if(["#61cbf4","#37b5ed"].includes(c))return"lane";if(["#ffc000","#f59e0b"].includes(c))return"route";if(["#7030a0","#a855f7"].includes(c))return"boundary";if(["#00b050","#22c55e"].includes(c)||stroke==="#042433"&&fill==="#00b050")return"signal";return"map";}
@@ -383,7 +383,12 @@ function priorityGate(car,snapshot,trace=null){
    other.v<other.spec.cruise*.75;
   if(priorityHeld){
    const conflict=priorityRouteConflict(car,other);
-   if(conflict && other.s-other.length/2<=conflict.lastPriorityPosition){
+   // A stopped vehicle well upstream can be held by its own queue.
+   // Do not veto a gap indefinitely based on that vehicle's entire
+   // eventual route; the time-resolved forecast below handles arrivals.
+   const immediatelyApproaching=other.s>=other.track.stopAt-other.length*1.5;
+   if(conflict && immediatelyApproaching &&
+      other.s-other.length/2<=conflict.lastPriorityPosition){
     if(trace)trace.blocker={id:other.id,route:other.track.id,rule:"Zpomalující nebo čekající vozidlo s předností na konfliktní trase",prioritySpeed:+other.v.toFixed(2),lastConflictPosition:conflict.lastPriorityPosition};
     return {gap:Math.max(0,stop-car.s),v:0};
    }
@@ -396,7 +401,11 @@ function priorityGate(car,snapshot,trace=null){
    const t=tick*.1;
    const ownS=Math.min(car.track.length,start+mainGhost.s);
    const cautiousS=Math.min(car.track.length,start+Math.min(mainGhost.s,cautiousGhost.s*.72));
-   const otherS=Math.min(other.track.length,other.s+otherGhost.s);
+   const otherS=other.s+otherGhost.s;
+   // A priority vehicle is no longer an obstacle after its rear has
+   // exited the map. Never clamp the ghost to its route endpoint: that
+   // used to leave a fictitious stationary vehicle at the exit.
+   if(otherS-other.length/2>other.track.length)break;
    if(ownS>=end&&cautiousS>=end)break;
    if(overlaps(predictedFootprint(car,ownS),predictedFootprint(other,otherS))||
       overlaps(predictedFootprint(car,cautiousS),predictedFootprint(other,otherS))){
