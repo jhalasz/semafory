@@ -2,7 +2,7 @@ import {VEHICLE_TYPES,advanceVehicle} from "./vehicle-dynamics.js?v=2.5.31";
 import {createSignalController} from "./signal-controller.js?v=2.4.3";
 const ns="http://www.w3.org/2000/svg",svg=document.getElementById("scene"),$=id=>document.getElementById(id);
 const map=$("map"),photoMap=$("photo-map"),markings=$("markings"),carsLayer=$("vehicles"),lights=$("lights");
-const APP_VERSION="2.5.33";
+const APP_VERSION="2.5.34";
 const FIXED_DT=0.01;let accumulator=0,dayElapsed=0,spawnBudget=0;let collisionReport=null,selectedCarId=null;let signalsEnabled=false,collisionLocked=false,tracks=[],cars=[],passed=0,running=false,clock=0,spawnClock=0,last=0,phase=0,nextId=1,signals=[],controller=null,signalLocations=[];
 function svgEl(name,attrs={}){const e=document.createElementNS(ns,name);for(const [k,v]of Object.entries(attrs))e.setAttribute(k,String(v));return e;}
 function category(el){const style=el.getAttribute("style")||"";const stroke=(el.getAttribute("stroke")||(style.match(/stroke:\s*([^;]+)/)||[])[1]||"").toLowerCase(),fill=(el.getAttribute("fill")||(style.match(/fill:\s*([^;]+)/)||[])[1]||"").toLowerCase();const c=stroke&&stroke!=="none"?stroke:fill;if(["#fff","#ffffff"].includes(c))return"markings";if(["#61cbf4","#37b5ed"].includes(c))return"lane";if(["#ffc000","#f59e0b"].includes(c))return"route";if(["#7030a0","#a855f7"].includes(c))return"boundary";if(["#00b050","#22c55e"].includes(c)||stroke==="#042433"&&fill==="#00b050")return"signal";return"map";}
@@ -307,10 +307,49 @@ function priorityRouteConflict(car,other){
  priorityConflictCache.set(key,result);
  return result;
 }
+// The last non-conflicting waiting position for a left turn. The position
+// is determined from swept vehicle envelopes, not from Massag route IDs.
+// An uncontrolled minor-road turn stays at the entry line if advancing would
+// conflict with main-road flows from other directions.
+const innerWaitCache=new Map();
+function waitingPosition(track,spec){
+ const key=track.id+"|"+spec.length+"|"+spec.width+"|"+(signalsEnabled?"light":"priority");
+ if(innerWaitCache.has(key))return innerWaitCache.get(key);
+ let wait=track.stopAt;
+ if(leftTurn(track)){
+  const sample={track,length:spec.length,spec,s:wait};
+  let first=Infinity;
+  for(const other of tracks){
+   if(other===track||other.entryLane===track.entryLane)continue;
+   const opposed=opposingTracks(track,other);
+   const mainConflict=!signalsEnabled&&track.roadPriority==="minor"&&other.roadPriority==="main";
+   if(!opposed&&!mainConflict)continue;
+   const otherSpec=VEHICLE_TYPES.truck; // use larger envelope to be conservative
+   const contender={track:other,length:otherSpec.length,spec:otherSpec,s:0};
+   const targetEnd=Math.min(track.length,track.exitStart+spec.length);
+   const otherEnd=Math.min(other.length,other.exitStart+otherSpec.length);
+   outer:for(let p=track.stopAt;p<=targetEnd;p+=3){
+    for(let q=other.stopAt;q<=otherEnd;q+=5){
+     if(overlaps(predictedFootprint(sample,p,1),predictedFootprint(contender,q,1))){
+      first=Math.min(first,p);break outer;
+     }
+    }
+   }
+  }
+  // Stand BEFORE the first conflicting body position. The additional
+  // clearance also gives the controller a proper braking buffer.
+  if(Number.isFinite(first)&&first>track.stopAt+spec.length*.6){
+   wait=Math.max(track.stopAt,first-10);
+  }
+ }
+ innerWaitCache.set(key,wait);
+ return wait;
+}
 function priorityGate(car,snapshot,trace=null){
- const stop=car.track.stopAt;
- // Commitment starts once the front has passed the yield/entry boundary.
- if(car.s>stop+.1){if(trace)trace.gateStatus="Po překročení rozhodovací hranice – přednost se už znovu nevyhodnocuje";return null;}
+ const stop=waitingPosition(car.track,car.spec);
+ // Passing the safe wait point commits to clearing the conflict zone.
+ if(car.s>stop+.1){if(trace)trace.gateStatus="Po rozhodnutí dokončuje manévr";return null;}
+ if(trace)trace.waitAt=+stop.toFixed(2);
  const priority=snapshot.filter(other=>{
   if(other.id===car.id)return false;
   // A minor approach yields to ALL main-road movements, including turns.
@@ -329,8 +368,8 @@ function priorityGate(car,snapshot,trace=null){
  const end=Math.min(car.track.length,car.track.exitStart+car.length+65);
  const distance=end-start;
  const accel=Math.max(3,car.spec.maxAcceleration*.55);
- const timeToClear=Math.sqrt(2*distance/accel)+distance/Math.max(12,car.spec.cruise)+2;
- const horizon=Math.min(24,Math.max(8,timeToClear+3));
+ const timeToClear=Math.sqrt(2*distance/accel)+distance/Math.max(12,car.spec.cruise)+3;
+ const horizon=Math.min(28,Math.max(10,timeToClear+4));
  for(const other of priority){
   // A vehicle held at its own red light cannot claim priority until it
   // enters, whereas a vehicle already past the signal remains relevant.
@@ -350,13 +389,13 @@ function priorityGate(car,snapshot,trace=null){
    }
   }
   const mainGhost={s:0,v:fromStop?0:car.v,spec:car.spec};
-  const cautiousGhost={s:0,v:fromStop?0:car.v*.6,spec:car.spec};
+  const cautiousGhost={s:0,v:fromStop?0:car.v*.45,spec:car.spec};
   const otherGhost={s:0,v:other.v,spec:other.spec};
   for(let tick=0;tick<=Math.ceil(horizon/.1);tick++){
    if(tick){advanceVehicle(mainGhost,null,.1);advanceVehicle(cautiousGhost,null,.1);advanceVehicle(otherGhost,null,.1);}
    const t=tick*.1;
    const ownS=Math.min(car.track.length,start+mainGhost.s);
-   const cautiousS=Math.min(car.track.length,start+Math.min(mainGhost.s,cautiousGhost.s*.85));
+   const cautiousS=Math.min(car.track.length,start+Math.min(mainGhost.s,cautiousGhost.s*.72));
    const otherS=Math.min(other.track.length,other.s+otherGhost.s);
    if(ownS>=end&&cautiousS>=end)break;
    if(overlaps(predictedFootprint(car,ownS),predictedFootprint(other,otherS))||
@@ -620,8 +659,9 @@ function animate(now){
   if(inspect){inspect.activeObstacle=obstacleSource;inspect.obstacle=obstacle?{gap:obstacle.gap,velocity:obstacle.v}:null;car.liveInspection=inspect;}
   const previousS=car.s;
   advanceVehicle(car,obstacle,dt);
-  if(previousS<=car.track.stopAt+.1&&car.s>car.track.stopAt+.1){
-   car.entryDecision={...gateTrace,t:+clock.toFixed(3),crossedAt:+car.s.toFixed(3),crossingSpeed:+car.v.toFixed(3),effectiveObstacle:obstacleSource||null,priorityGateBlocked:!!gate};
+  const decisionAt=waitingPosition(car.track,car.spec);
+  if(previousS<=decisionAt+.1&&car.s>decisionAt+.1){
+   car.entryDecision={...gateTrace,t:+clock.toFixed(3),crossedAt:+car.s.toFixed(3),crossingSpeed:+car.v.toFixed(3),effectiveObstacle:obstacleSource||null,priorityGateBlocked:!!gate,decisionAt};
   }
   recordTelemetry(car,"step",obstacle,gate);
  }
