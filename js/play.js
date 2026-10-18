@@ -2,8 +2,8 @@ import {VEHICLE_TYPES,advanceVehicle} from "./vehicle-dynamics.js?v=2.5.31";
 import {createSignalController} from "./signal-controller.js?v=2.4.3";
 const ns="http://www.w3.org/2000/svg",svg=document.getElementById("scene"),$=id=>document.getElementById(id);
 const map=$("map"),photoMap=$("photo-map"),markings=$("markings"),carsLayer=$("vehicles"),lights=$("lights");
-const APP_VERSION="2.5.39";
-const FIXED_DT=0.01;let accumulator=0,dayElapsed=0,spawnBudget=0;let collisionReport=null,selectedCarId=null;let signalsEnabled=false,collisionLocked=false,tracks=[],cars=[],passed=0,running=false,clock=0,spawnClock=0,last=0,phase=0,nextId=1,signals=[],controller=null,signalLocations=[];
+const APP_VERSION="2.5.40";
+const FIXED_DT=0.01;let accumulator=0,dayElapsed=0,spawnBudget=0;let collisionReport=null,selectedCarId=null;let signalsEnabled=false,collisionLocked=false,tracks=[],cars=[],passed=0,routeStats=new Map(),running=false,clock=0,spawnClock=0,last=0,phase=0,nextId=1,signals=[],controller=null,signalLocations=[];
 function svgEl(name,attrs={}){const e=document.createElementNS(ns,name);for(const [k,v]of Object.entries(attrs))e.setAttribute(k,String(v));return e;}
 function category(el){const style=el.getAttribute("style")||"";const stroke=(el.getAttribute("stroke")||(style.match(/stroke:\s*([^;]+)/)||[])[1]||"").toLowerCase(),fill=(el.getAttribute("fill")||(style.match(/fill:\s*([^;]+)/)||[])[1]||"").toLowerCase();const c=stroke&&stroke!=="none"?stroke:fill;if(["#fff","#ffffff"].includes(c))return"markings";if(["#61cbf4","#37b5ed"].includes(c))return"lane";if(["#ffc000","#f59e0b"].includes(c))return"route";if(["#7030a0","#a855f7"].includes(c))return"boundary";if(["#00b050","#22c55e"].includes(c)||stroke==="#042433"&&fill==="#00b050")return"signal";return"map";}
 function readSvg(xml){
@@ -491,8 +491,21 @@ function recordTelemetry(car,reason,obstacle=null,gate=null,force=false){
   signal,event:force?reason:transition?"change":null});
  car.lastTelemetryTick=tick;car.lastTelemetryState=state;
 }
+function renderRouteStats(){
+ const body=$("route-stats-body");if(!body)return;
+ body.replaceChildren();
+ for(const track of tracks){
+  const row=document.createElement("tr");
+  const completed=routeStats.get(track.id)||0;
+  const inMap=cars.filter(c=>c.track.id===track.id).length;
+  for(const value of [track.id,track.entryLane+" → "+track.exitLane,completed,inMap]){
+   const cell=document.createElement("td");cell.textContent=String(value);row.append(cell);
+  }
+  body.append(row);
+ }
+}
 function exportDiagnostics(){
- const payload={version:APP_VERSION,metersPerSvgUnit:0.125,speedLimitKmH:50,clock,signalsEnabled,dayHour:dayHour(),dayElapsed,dayAcceleration:DAY_ACCELERATION,trafficProfile:trafficProfile(dayHour()),intensityMultiplier:Number($("rate").value),collision:collisionReport,
+ const payload={version:APP_VERSION,metersPerSvgUnit:0.125,speedLimitKmH:50,clock,signalsEnabled,dayHour:dayHour(),dayElapsed,dayAcceleration:DAY_ACCELERATION,trafficProfile:trafficProfile(dayHour()),intensityMultiplier:Number($("rate").value),completedByRoute:Object.fromEntries(routeStats),collision:collisionReport,
   cars:cars.map(c=>({id:c.id,route:c.track.id,entryLane:c.track.entryLane,
    exitLane:c.track.exitLane,roadPriority:c.track.roadPriority,type:c.spec===VEHICLE_TYPES.truck?"truck":"car",
    length:c.length,enteredAt:c.enteredAt,entryDecision:c.entryDecision||null,history:c.history}))};
@@ -788,7 +801,7 @@ function animate(now){
   $("diagnostics").hidden=false;
   $("state").textContent="KOLIZE – běh zastaven, vozidla "+collision[0].id+" ("+collision[0].track.id+") a "+collision[1].id+" ("+collision[1].track.id+") · čas "+formatTime(clock);
  }
- cars=cars.filter(c=>{if(c.s<c.track.length)return true;c.el.remove();passed++;return false;});
+ cars=cars.filter(c=>{if(c.s<c.track.length)return true;c.el.remove();passed++;routeStats.set(c.track.id,(routeStats.get(c.track.id)||0)+1);return false;});
  }
  // Rendering happens once per animation frame, not hundreds of times per
  // real second. The simulation itself retains exactly the same 10 ms steps.
@@ -799,6 +812,7 @@ function animate(now){
  for(const c of cars){const rect=c.el.firstElementChild;rect.setAttribute("stroke",c.id===selectedCarId?"#ffff00":"#172536");rect.setAttribute("stroke-width",c.id===selectedCarId?"3.8":"1.5");}
  updateInspector();
  const stage=controller?.status();$("phase").textContent=signalsEnabled?(stage?"Semafory · fáze "+stage.stage+" · "+stage.mode:"Semafory"):"Bez semaforů · hlavní / vedlejší";$("elapsed").textContent=formatTime(clock);$("count").textContent=cars.length;$("passed").textContent=passed;
+ renderRouteStats();
  renderSignalLights();
  requestAnimationFrame(animate);
 }
@@ -808,6 +822,7 @@ async function init(){
  const network=makeRoadNetwork(parts,data.directions);
  tracks=(data.movements?.movements||[]).filter(m=>m.confirmed).map(m=>makeTrack(network,m)).filter(Boolean);
  signalLocations=locateSignals(parts);
+ routeStats=new Map(tracks.map(t=>[t.id,0]));
 
   signals=[...new Set(tracks.map(t=>t.signal))];if(!signals.length||!tracks.length)throw Error("Chybí potvrzené průjezdy nebo směry");
  const freeTraffic=data.uncontrolledMovements||{};
@@ -834,7 +849,7 @@ async function init(){
  $("export-diagnostics").onclick=exportDiagnostics;
  $("inspect-toggle").onclick=()=>{if(selectedCarId!==null&&!$("vehicle-inspector").hidden){selectedCarId=null;updateInspector();return;}selectedCarId=(cars.find(c=>c.v<2)||cars[0])?.id??null;updateInspector();};
  $("inspect-select").onchange=()=>{selectedCarId=Number($("inspect-select").value);updateInspector();};
- $("reset").onclick=()=>{for(const c of cars)c.el.remove();cars=[];selectedCarId=null;clock=0;accumulator=0;dayElapsed=0;spawnBudget=0;collisionLocked=false;collisionReport=null;$("diagnostics").hidden=true;phase=0;controller.reset();passed=0;spawnClock=0;running=true;$("state").textContent="Simulace běží";};
+ $("reset").onclick=()=>{for(const c of cars)c.el.remove();cars=[];selectedCarId=null;clock=0;accumulator=0;dayElapsed=0;spawnBudget=0;collisionLocked=false;collisionReport=null;$("diagnostics").hidden=true;phase=0;controller.reset();passed=0;routeStats=new Map(tracks.map(t=>[t.id,0]));spawnClock=0;running=true;$("state").textContent="Simulace běží";};
  for(const id of ["speed","rate"])$(id).oninput=()=>$(id+"-value").textContent=$(id).value+"×";
  $("start-time").onchange=()=>{if(!running&&clock===0)updateDayClock();};
  updateDayClock();
