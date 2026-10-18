@@ -2,7 +2,7 @@ import {VEHICLE_TYPES,advanceVehicle} from "./vehicle-dynamics.js?v=2.3";
 import {createSignalController} from "./signal-controller.js?v=2.4.3";
 const ns="http://www.w3.org/2000/svg",svg=document.getElementById("scene"),$=id=>document.getElementById(id);
 const map=$("map"),photoMap=$("photo-map"),markings=$("markings"),carsLayer=$("vehicles"),lights=$("lights");
-const FIXED_DT=0.01;let accumulator=0;let collisionReport=null;let signalsEnabled=false,collisionLocked=false,tracks=[],cars=[],passed=0,running=false,clock=0,spawnClock=0,last=0,phase=0,nextId=1,signals=[],controller=null,signalLocations=[];
+const FIXED_DT=0.01;let accumulator=0;let collisionReport=null,selectedCarId=null;let signalsEnabled=false,collisionLocked=false,tracks=[],cars=[],passed=0,running=false,clock=0,spawnClock=0,last=0,phase=0,nextId=1,signals=[],controller=null,signalLocations=[];
 function svgEl(name,attrs={}){const e=document.createElementNS(ns,name);for(const [k,v]of Object.entries(attrs))e.setAttribute(k,String(v));return e;}
 function category(el){const style=el.getAttribute("style")||"";const stroke=(el.getAttribute("stroke")||(style.match(/stroke:\s*([^;]+)/)||[])[1]||"").toLowerCase(),fill=(el.getAttribute("fill")||(style.match(/fill:\s*([^;]+)/)||[])[1]||"").toLowerCase();const c=stroke&&stroke!=="none"?stroke:fill;if(["#fff","#ffffff"].includes(c))return"markings";if(["#61cbf4","#37b5ed"].includes(c))return"lane";if(["#ffc000","#f59e0b"].includes(c))return"route";if(["#7030a0","#a855f7"].includes(c))return"boundary";if(["#00b050","#22c55e"].includes(c)||stroke==="#042433"&&fill==="#00b050")return"signal";return"map";}
 function readSvg(xml){
@@ -275,10 +275,10 @@ function predictedProgress(car,t,fromStop=false){
  const maxV=car.spec.cruise,until=(maxV-v)/acc;
  return t<until?v*t+.5*acc*t*t:v*until+.5*acc*until*until+maxV*(t-until);
 }
-function priorityGate(car,snapshot){
+function priorityGate(car,snapshot,trace=null){
  const stop=car.track.stopAt;
  // Commitment starts once the front has passed the yield/entry boundary.
- if(car.s>stop+.1)return null;
+ if(car.s>stop+.1){if(trace)trace.gateStatus="Po překročení rozhodovací hranice – přednost se už znovu nevyhodnocuje";return null;}
  const priority=snapshot.filter(other=>{
   if(other.id===car.id)return false;
   // A minor approach yields to ALL main-road movements, including turns.
@@ -288,6 +288,7 @@ function priorityGate(car,snapshot){
   if((signalsEnabled||car.track.roadPriority===other.track.roadPriority)&&leftTurn(car.track)&&opposingTracks(car.track,other.track)&&!leftTurn(other.track))return true;
   return yieldRules.some(rule=>rule.from===car.track.id&&rule.to.includes(other.track.id));
  });
+ if(trace){trace.gateStatus="Kontrola přednosti před vjezdem";trace.priorityCandidates=priority.map(c=>({id:c.id,route:c.track.id,s:+c.s.toFixed(1),v:+c.v.toFixed(1)}));}
  if(!priority.length)return null;
  // At the entry line simulate a fresh launch. When approaching the line,
  // use current speed, allowing natural braking before reaching the gate.
@@ -323,8 +324,8 @@ function priorityGate(car,snapshot){
    const priorityDeparture=Math.max(0,priorityClearDistance)/Math.max(5,other.v);
    const joinsAhead=ownClearance+2<priorityArrival;
    const joinsBehind=ownArrival>priorityDeparture+2;
-   if(!joinsAhead&&!joinsBehind)
-    return {gap:Math.max(0,stop-car.s),v:0};
+   if(!joinsAhead&&!joinsBehind){if(trace)trace.blocker={id:other.id,route:other.track.id,rule:"Časový odstup ve společném výjezdovém pruhu",ownArrival:+ownArrival.toFixed(2),priorityArrival:+priorityArrival.toFixed(2),priorityDeparture:+priorityDeparture.toFixed(2),ownClearance:+ownClearance.toFixed(2),joinsAhead,joinsBehind};
+    return {gap:Math.max(0,stop-car.s),v:0};}
   }
   for(let t=0;t<=horizon;t+=.3){
    const ownS=Math.min(car.track.length,start+predictedProgress(car,t,fromStop));
@@ -332,6 +333,7 @@ function priorityGate(car,snapshot){
    if(ownS>=end)break;
    // Includes time separation, full body, and the extra clearance margin.
    if(overlaps(predictedFootprint(car,ownS),predictedFootprint(other,otherS))){
+    if(trace)trace.blocker={id:other.id,route:other.track.id,rule:"Předpovězený překryv obrysů vozidel",secondsAhead:+t.toFixed(2),ownPosition:+ownS.toFixed(2),otherPosition:+otherS.toFixed(2)};
     return {gap:Math.max(0,stop-car.s),v:0};
    }
   }
@@ -375,6 +377,7 @@ function spawn(){
  const truck=Math.random()<.09,spec=truck?VEHICLE_TYPES.truck:VEHICLE_TYPES.car;const g=svgEl("g"),body=svgEl("rect",{x:truck?-17:-12,y:truck?-6:-5,width:truck?34:24,height:truck?12:10,rx:2,fill:truck?"#f0c673":["#fff5bf","#e14e5a","#61b9ef","#9ee08e"][Math.floor(Math.random()*4)],stroke:"#172536","stroke-width":1.5});
  g.append(body);carsLayer.append(g);const car={id:nextId++,track:t,s:0,v:spec.cruise,length:spec.length,spec,el:g,
   enteredAt:clock,history:[],lastTelemetryTick:-1,lastTelemetryState:""};
+ car.el.style.cursor="pointer";car.el.addEventListener("click",e=>{e.stopPropagation();selectedCarId=car.id;updateInspector();});
  cars.push(car);recordTelemetry(car,"spawn",null,null,true);
 }
 function locateSignals(parts){
@@ -416,6 +419,19 @@ function requestSignal(id){
  $("state").textContent=ok?"Vyžádána zelená pro "+id+" (bezpečné přepnutí).":"Tento semafor už má zelenou.";
 }
 function lightIsGreen(signal){return freeSignals.has(signal)||controller?.state(signal)==="green";}
+function updateInspector(){
+ const panel=$("vehicle-inspector"),car=cars.find(c=>c.id===selectedCarId);
+ if(!car){panel.hidden=true;return;}
+ panel.hidden=false;
+ const d=car.liveInspection||{},block=d.blocker||null,active=d.activeObstacle||null;
+ $("inspect-title").textContent="Vozidlo "+car.id+" · "+car.track.id+" · "+(car.track.roadPriority==="main"?"hlavní":"vedlejší");
+ $("inspect-info").textContent="Čas "+formatTime(clock)+" | rychlost "+car.v.toFixed(2)+" | poloha "+car.s.toFixed(2)+" / "+car.track.length.toFixed(1)+" | rozhodovací hranice "+car.track.stopAt.toFixed(2);
+ $("inspect-status").textContent=active?"Aktuálně omezuje: "+active.rule+(active.id?" · auto "+active.id+" ("+active.route+")":""):"Aktuálně bez omezení";
+ $("inspect-detail").textContent=(d.gateStatus||"Zatím bez výpočtu přednosti")+
+  (block?"\\n\\nPŘEDNOST BLOKUJE: "+JSON.stringify(block,null,2):"\\nPřednost nyní neblokuje vjezd.")+
+  (d.priorityCandidates?"\\n\\nVozidla posuzovaná pro přednost: "+d.priorityCandidates.map(c=>"#"+c.id+" "+c.route+" (s="+c.s+", v="+c.v+")").join("; "):"")+
+  (d.obstacle?"\\n\\nÚčinná překážka: "+JSON.stringify(d.obstacle):"");
+}
 function formatTime(seconds){const n=Math.floor(seconds);return String(Math.floor(n/3600)).padStart(2,"0")+":"+String(Math.floor(n/60)%60).padStart(2,"0")+":"+String(n%60).padStart(2,"0");}
 function animate(now){
  if(!last)last=now;const real=Math.min(.05,(now-last)/1000);last=now;
@@ -426,6 +442,8 @@ function animate(now){
  const snapshots=cars.map(c=>({...c}));
  for(const car of cars){
   let obstacle=null;
+  const inspect=car.id===selectedCarId?{t:clock,vehicle:car.id,route:car.track.id,road:car.track.roadPriority,s:car.s,v:car.v,stopAt:car.track.stopAt}:null;
+  let obstacleSource=null;
   for(const other of snapshots){
    if(other.id===car.id)continue;
    let delta=Infinity;
@@ -464,7 +482,7 @@ function animate(now){
      // vehicles whose centres are close but whose bodies do not overlap.
      const clearance=footprintClearance(vehicleFootprint(car),vehicleFootprint(other));
      if(clearance<Math.max(4,car.v*.65)){
-      if(!obstacle||clearance<obstacle.gap)obstacle={gap:clearance,v:other.v};
+      if(!obstacle||clearance<obstacle.gap){obstacle={gap:clearance,v:other.v};if(inspect)obstacleSource={rule:"Geometrické následování ve společném příjezdu",id:other.id,route:other.track.id};}
      }
     }
    }
@@ -492,7 +510,7 @@ function animate(now){
     if(otherExit>ourExit&&otherExit>-other.length)delta=Math.min(delta,otherExit-ourExit);
    }
    const gap=delta-(other.length+car.length)/2;
-   if(Number.isFinite(gap)&&(!obstacle||gap<obstacle.gap))obstacle={gap,v:other.v};
+   if(Number.isFinite(gap)&&(!obstacle||gap<obstacle.gap)){obstacle={gap,v:other.v};if(inspect)obstacleSource={rule:"Následování v jízdním pruhu",id:other.id,route:other.track.id};}
   }
   // Physical follower envelope independent of route identities.
   const ownFoot=vehicleFootprint(car,1);
@@ -512,16 +530,17 @@ function animate(now){
    const clearance=footprintClearance(ownFoot,vehicleFootprint(other,1));
    if(clearance<Math.max(12,car.v*1.25)){
     const candidate={gap:Math.max(0,clearance),v:other.v};
-    if(!obstacle||candidate.gap<obstacle.gap)obstacle=candidate;
+    if(!obstacle||candidate.gap<obstacle.gap){obstacle=candidate;if(inspect)obstacleSource={rule:"Fyzická vzdálenost za vozidlem",id:other.id,route:other.track.id};}
    }
   }
-  const gate=priorityGate(car,snapshots);
-  if(gate&&(!obstacle||gate.gap<obstacle.gap))obstacle=gate;
+  const gate=priorityGate(car,snapshots,inspect);
+  if(gate&&(!obstacle||gate.gap<obstacle.gap)){obstacle=gate;if(inspect)obstacleSource={rule:"Dávání přednosti",...(inspect.blocker||{})};}
    // A red signal acts like a stationary lead vehicle at the stop line.
   if(!lightIsGreen(car.track.signal)&&car.s<car.track.stopAt){
    const gap=car.track.stopAt-car.s;
-   if(!obstacle||gap<obstacle.gap)obstacle={gap,v:0};
+   if(!obstacle||gap<obstacle.gap){obstacle={gap,v:0};if(inspect)obstacleSource={rule:"Červený signál",signal:car.track.signal};}
   }
+  if(inspect){inspect.activeObstacle=obstacleSource;inspect.obstacle=obstacle?{gap:obstacle.gap,velocity:obstacle.v}:null;car.liveInspection=inspect;}
   advanceVehicle(car,obstacle,dt);
   recordTelemetry(car,"step",obstacle,gate);
  }
@@ -556,6 +575,7 @@ function animate(now){
   const p=position(car.track,car.s);
   car.el.setAttribute("transform",`translate(${p.x} ${p.y}) rotate(${p.angle})`);
  }
+ updateInspector();
  const stage=controller?.status();$("phase").textContent=signalsEnabled?(stage?"Semafory · fáze "+stage.stage+" · "+stage.mode:"Semafory"):"Bez semaforů · hlavní / vedlejší";$("elapsed").textContent=formatTime(clock);$("count").textContent=cars.length;$("passed").textContent=passed;
  renderSignalLights();
  requestAnimationFrame(animate);
@@ -588,7 +608,7 @@ async function init(){
  $("start").onclick=()=>{if(collisionLocked){$("state").textContent="Po kolizi spusť novou simulaci.";return;}running=true;$("state").textContent="Simulace běží";};
  $("pause").onclick=()=>{running=false;$("state").textContent="Pozastaveno";};
  $("export-diagnostics").onclick=exportDiagnostics;
- $("reset").onclick=()=>{for(const c of cars)c.el.remove();cars=[];clock=0;accumulator=0;collisionLocked=false;collisionReport=null;$("diagnostics").hidden=true;phase=0;controller.reset();passed=0;spawnClock=0;running=true;$("state").textContent="Simulace běží";};
+ $("reset").onclick=()=>{for(const c of cars)c.el.remove();cars=[];selectedCarId=null;clock=0;accumulator=0;collisionLocked=false;collisionReport=null;$("diagnostics").hidden=true;phase=0;controller.reset();passed=0;spawnClock=0;running=true;$("state").textContent="Simulace běží";};
  for(const id of ["speed","rate"])$(id).oninput=()=>$(id+"-value").textContent=$(id).value+(id==="speed"?"×":"");
  requestAnimationFrame(animate);
 }
