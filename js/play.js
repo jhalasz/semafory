@@ -345,19 +345,75 @@ function waitingPosition(track,spec){
  innerWaitCache.set(key,wait);
  return wait;
 }
+function priorityApplies(a,b){
+ if(a===b)return false;
+ if(!signalsEnabled&&a.roadPriority==="minor"&&b.roadPriority==="main")return true;
+ if((signalsEnabled||a.roadPriority===b.roadPriority)&&
+    leftTurn(a)&&opposingTracks(a,b)&&!leftTurn(b))return true;
+ return yieldRules.some(rule=>rule.from===a.id&&rule.to.includes(b.id));
+}
+// Compute two decision gates only when there is a physically empty waiting
+// area BETWEEN distinct priority conflicts. The entire vehicle envelope
+// must fit, including its rear; no route IDs are hardcoded.
+const stagedTurnCache=new Map();
+function turnStages(track,spec){
+ const key=track.id+"|"+spec.length+"|"+spec.width+"|"+(signalsEnabled?"signal":"yield");
+ if(stagedTurnCache.has(key))return stagedTurnCache.get(key);
+ const firstWait=waitingPosition(track,spec);
+ const fullEnd=Math.min(track.length,track.exitStart+spec.length+65);
+ const fallback=[{stop:firstWait,end:fullEnd}];
+ if(!leftTurn(track)){stagedTurnCache.set(key,fallback);return fallback;}
+ const own={track,spec,length:spec.length};
+ const active=tracks.filter(t=>priorityApplies(track,t));
+ const occupied=[];
+ for(let p=firstWait+3;p<=fullEnd;p+=4){
+  let collide=false;
+  for(const other of active){
+   const os=VEHICLE_TYPES.truck,ghost={track:other,spec:os,length:os.length};
+   const last=Math.min(other.length,other.exitStart+os.length+40);
+   for(let q=Math.max(0,other.stopAt);q<=last;q+=10){
+    if(overlaps(predictedFootprint(own,p,2),predictedFootprint(ghost,q,2))){
+     collide=true;break;
+    }
+   }
+   if(collide)break;
+  }
+  occupied.push({p,collide});
+ }
+ // A valid island has two disjoint conflict clusters, with space for a
+ // full vehicle body and an additional margin at rest.
+ let seenFirst=false,clearStart=null,chosen=null;
+ for(let i=0;i<occupied.length;i++){
+  const v=occupied[i];
+  if(v.collide){if(clearStart!==null&&seenFirst&&v.p-clearStart>=spec.length+20){
+    chosen=Math.floor((clearStart+v.p)/2);
+    break;
+   }seenFirst=true;clearStart=null;
+  }else if(seenFirst&&clearStart===null)clearStart=v.p;
+ }
+ const stages=chosen!==null&&chosen>firstWait+spec.length/2+12?
+  [{stop:firstWait,end:chosen},{stop:chosen,end:fullEnd}]:fallback;
+ stagedTurnCache.set(key,stages);
+ return stages;
+}
 function priorityGate(car,snapshot,trace=null){
- const stop=waitingPosition(car.track,car.spec);
- // Passing the safe wait point commits to clearing the conflict zone.
- if(car.s>stop+.1){if(trace)trace.gateStatus="Po rozhodnutí dokončuje manévr";return null;}
- if(trace)trace.waitAt=+stop.toFixed(2);
+ const stages=turnStages(car.track,car.spec);
+ const next=stages.find(stage=>car.s<=stage.stop+.1);
+ if(!next){if(trace)trace.gateStatus="Manévr dokončuje – všechna rozhodnutí provedena";return null;}
+ const stop=next.stop,end=next.end;
+ if(trace){trace.waitAt=+stop.toFixed(2);trace.stage=stages.indexOf(next)+1;trace.stages=stages.length;}
  const priority=snapshot.filter(other=>{
-  if(other.id===car.id)return false;
-  // A minor approach yields to ALL main-road movements, including turns.
-  if(!signalsEnabled&&car.track.roadPriority==="minor"&&other.track.roadPriority==="main")return true;
-  // Among approaches of the same status, left turn yields to opposing
-  // through traffic and right turns. Opposing left turns do not claim priority.
-  if((signalsEnabled||car.track.roadPriority===other.track.roadPriority)&&leftTurn(car.track)&&opposingTracks(car.track,other.track)&&!leftTurn(other.track))return true;
-  return yieldRules.some(rule=>rule.from===car.track.id&&rule.to.includes(other.track.id));
+  if(other.id===car.id||!priorityApplies(car.track,other.track))return false;
+  // Ignore conflicts that are wholly outside this decision segment.
+  const model={track:car.track,spec:car.spec,length:car.length};
+  const tester={track:other.track,spec:other.spec,length:other.length};
+  const finish=Math.min(other.track.length,other.track.exitStart+other.length+40);
+  for(let p=stop;p<=end;p+=8){
+   for(let q=Math.max(0,other.track.stopAt);q<=finish;q+=12){
+    if(overlaps(predictedFootprint(model,p,2),predictedFootprint(tester,q,2)))return true;
+   }
+  }
+  return false;
  });
  if(trace){trace.gateStatus="Kontrola přednosti před vjezdem";trace.priorityCandidates=priority.map(c=>({id:c.id,route:c.track.id,s:+c.s.toFixed(1),v:+c.v.toFixed(1)}));}
  if(!priority.length)return null;
@@ -365,7 +421,6 @@ function priorityGate(car,snapshot,trace=null){
  // use current speed, allowing natural braking before reaching the gate.
  const fromStop=car.v<3;
  const start=Math.min(car.s,stop);
- const end=Math.min(car.track.length,car.track.exitStart+car.length+65);
  const distance=end-start;
  const accel=Math.max(3,car.spec.maxAcceleration*.55);
  const timeToClear=Math.sqrt(2*distance/accel)+distance/Math.max(12,car.spec.cruise)+3;
@@ -701,8 +756,9 @@ function animate(now){
   if(inspect){inspect.activeObstacle=obstacleSource;inspect.obstacle=obstacle?{gap:obstacle.gap,velocity:obstacle.v}:null;car.liveInspection=inspect;}
   const previousS=car.s;
   advanceVehicle(car,obstacle,dt);
-  const decisionAt=waitingPosition(car.track,car.spec);
-  if(previousS<=decisionAt+.1&&car.s>decisionAt+.1){
+  const stageStops=turnStages(car.track,car.spec);
+  const decisionAt=stageStops.find(t=>previousS<=t.stop+.1&&car.s>t.stop+.1)?.stop;
+  if(decisionAt!==undefined){
    car.entryDecision={...gateTrace,t:+clock.toFixed(3),crossedAt:+car.s.toFixed(3),crossingSpeed:+car.v.toFixed(3),effectiveObstacle:obstacleSource||null,priorityGateBlocked:!!gate,decisionAt};
   }
   recordTelemetry(car,"step",obstacle,gate);
