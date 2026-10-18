@@ -375,7 +375,7 @@ function spawn(){
  const t=tracks[Math.floor(Math.random()*tracks.length)];
  if(cars.some(c=>c.track.entryLane===t.entryLane&&c.s-c.length/2<65))return;
  const truck=Math.random()<.09,spec=truck?VEHICLE_TYPES.truck:VEHICLE_TYPES.car;const g=svgEl("g"),body=svgEl("rect",{x:truck?-17:-12,y:truck?-6:-5,width:truck?34:24,height:truck?12:10,rx:2,fill:truck?"#f0c673":["#fff5bf","#e14e5a","#61b9ef","#9ee08e"][Math.floor(Math.random()*4)],stroke:"#172536","stroke-width":1.5});
- g.append(body);carsLayer.append(g);const car={id:nextId++,track:t,s:0,v:spec.cruise,length:spec.length,spec,el:g,
+ g.append(body);g.append(svgEl("rect",{x:truck?-23:-19,y:-17,width:truck?46:38,height:34,fill:"transparent","pointer-events":"all"}));carsLayer.append(g);const car={id:nextId++,track:t,s:0,v:spec.cruise,length:spec.length,spec,el:g,
   enteredAt:clock,history:[],lastTelemetryTick:-1,lastTelemetryState:""};
  car.el.style.cursor="pointer";car.el.addEventListener("click",e=>{e.stopPropagation();selectedCarId=car.id;updateInspector();});
  cars.push(car);recordTelemetry(car,"spawn",null,null,true);
@@ -421,8 +421,11 @@ function requestSignal(id){
 function lightIsGreen(signal){return freeSignals.has(signal)||controller?.state(signal)==="green";}
 function updateInspector(){
  const panel=$("vehicle-inspector"),car=cars.find(c=>c.id===selectedCarId);
+ const selector=$("inspect-select");
+ const ids=cars.map(c=>c.id).join(",");
+ if(selector.dataset.ids!==ids){selector.replaceChildren();for(const c of cars){const opt=document.createElement("option");opt.value=c.id;opt.textContent="#"+c.id+" · "+c.track.id+" · "+(c.v<2?"stojí":"jede");selector.append(opt);}selector.dataset.ids=ids;}
  if(!car){panel.hidden=true;return;}
- panel.hidden=false;
+ panel.hidden=false;selector.value=String(car.id);
  const d=car.liveInspection||{},block=d.blocker||null,active=d.activeObstacle||null;
  $("inspect-title").textContent="Vozidlo "+car.id+" · "+car.track.id+" · "+(car.track.roadPriority==="main"?"hlavní":"vedlejší");
  $("inspect-info").textContent="Čas "+formatTime(clock)+" | rychlost "+car.v.toFixed(2)+" | poloha "+car.s.toFixed(2)+" / "+car.track.length.toFixed(1)+" | rozhodovací hranice "+car.track.stopAt.toFixed(2);
@@ -575,6 +578,7 @@ function animate(now){
   const p=position(car.track,car.s);
   car.el.setAttribute("transform",`translate(${p.x} ${p.y}) rotate(${p.angle})`);
  }
+ for(const c of cars){const rect=c.el.firstElementChild;rect.setAttribute("stroke",c.id===selectedCarId?"#ffff00":"#172536");rect.setAttribute("stroke-width",c.id===selectedCarId?"3.8":"1.5");}
  updateInspector();
  const stage=controller?.status();$("phase").textContent=signalsEnabled?(stage?"Semafory · fáze "+stage.stage+" · "+stage.mode:"Semafory"):"Bez semaforů · hlavní / vedlejší";$("elapsed").textContent=formatTime(clock);$("count").textContent=cars.length;$("passed").textContent=passed;
  renderSignalLights();
@@ -608,6 +612,8 @@ async function init(){
  $("start").onclick=()=>{if(collisionLocked){$("state").textContent="Po kolizi spusť novou simulaci.";return;}running=true;$("state").textContent="Simulace běží";};
  $("pause").onclick=()=>{running=false;$("state").textContent="Pozastaveno";};
  $("export-diagnostics").onclick=exportDiagnostics;
+ $("inspect-toggle").onclick=()=>{if(selectedCarId!==null&&!$("vehicle-inspector").hidden){selectedCarId=null;updateInspector();return;}selectedCarId=(cars.find(c=>c.v<2)||cars[0])?.id??null;updateInspector();};
+ $("inspect-select").onchange=()=>{selectedCarId=Number($("inspect-select").value);updateInspector();};
  $("reset").onclick=()=>{for(const c of cars)c.el.remove();cars=[];selectedCarId=null;clock=0;accumulator=0;collisionLocked=false;collisionReport=null;$("diagnostics").hidden=true;phase=0;controller.reset();passed=0;spawnClock=0;running=true;$("state").textContent="Simulace běží";};
  for(const id of ["speed","rate"])$(id).oninput=()=>$(id+"-value").textContent=$(id).value+(id==="speed"?"×":"");
  requestAnimationFrame(animate);
