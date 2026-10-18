@@ -2,7 +2,7 @@ import {VEHICLE_TYPES,advanceVehicle} from "./vehicle-dynamics.js?v=2.3";
 import {createSignalController} from "./signal-controller.js?v=2.4.3";
 const ns="http://www.w3.org/2000/svg",svg=document.getElementById("scene"),$=id=>document.getElementById(id);
 const map=$("map"),photoMap=$("photo-map"),markings=$("markings"),carsLayer=$("vehicles"),lights=$("lights");
-const APP_VERSION="2.5.25";
+const APP_VERSION="2.5.26";
 const FIXED_DT=0.01;let accumulator=0;let collisionReport=null,selectedCarId=null;let signalsEnabled=false,collisionLocked=false,tracks=[],cars=[],passed=0,running=false,clock=0,spawnClock=0,last=0,phase=0,nextId=1,signals=[],controller=null,signalLocations=[];
 function svgEl(name,attrs={}){const e=document.createElementNS(ns,name);for(const [k,v]of Object.entries(attrs))e.setAttribute(k,String(v));return e;}
 function category(el){const style=el.getAttribute("style")||"";const stroke=(el.getAttribute("stroke")||(style.match(/stroke:\s*([^;]+)/)||[])[1]||"").toLowerCase(),fill=(el.getAttribute("fill")||(style.match(/fill:\s*([^;]+)/)||[])[1]||"").toLowerCase();const c=stroke&&stroke!=="none"?stroke:fill;if(["#fff","#ffffff"].includes(c))return"markings";if(["#61cbf4","#37b5ed"].includes(c))return"lane";if(["#ffc000","#f59e0b"].includes(c))return"route";if(["#7030a0","#a855f7"].includes(c))return"boundary";if(["#00b050","#22c55e"].includes(c)||stroke==="#042433"&&fill==="#00b050")return"signal";return"map";}
@@ -270,11 +270,19 @@ function overlaps(a,b){
  }
  return true;
 }
-function predictedProgress(car,t,fromStop=false){
- const v=fromStop?0:Math.min(car.v,car.spec.cruise);
- const acc=Math.max(3,car.spec.maxAcceleration);
- const maxV=car.spec.cruise,until=(maxV-v)/acc;
- return t<until?v*t+.5*acc*t*t:v*until+.5*acc*until*until+maxV*(t-until);
+// Use the SAME longitudinal dynamics as the live simulation. Predict a
+// low-speed launch as well as free acceleration: obstacles ahead may delay
+// the yielding vehicle even when its current acceleration looks sufficient.
+function predictedProgress(car,t,fromStop=false,conservative=false){
+ const ghost={spec:car.spec,s:0,v:fromStop?0:Math.max(0,car.v)};
+ const n=Math.ceil(t/.05),dt=n?t/n:0;
+ for(let i=0;i<n;i++)advanceVehicle(ghost,null,dt);
+ if(!conservative)return ghost.s;
+ // A yielding movement starting near its entry can be slowed by traffic
+ // ahead; use a more cautious arrival estimate, never faster than free flow.
+ const slow={spec:car.spec,s:0,v:fromStop?0:Math.max(0,car.v*.6)};
+ for(let i=0;i<n;i++)advanceVehicle(slow,null,dt);
+ return Math.min(ghost.s,slow.s*.85);
 }
 // Cache only static geometric route relationships. Dynamic priority and
 // physical positions remain evaluated every simulation step.
@@ -341,17 +349,19 @@ function priorityGate(car,snapshot,trace=null){
     return {gap:Math.max(0,stop-car.s),v:0};
    }
   }
-  for(let t=0;t<=horizon;t+=.3){
+  for(let t=0;t<=horizon;t+=.1){
    const ownS=Math.min(car.track.length,start+predictedProgress(car,t,fromStop));
-   const otherS=Math.min(other.track.length,other.s+Math.max(0,other.v)*t);
+   const otherS=Math.min(other.track.length,other.s+predictedProgress(other,t,false));
    if(ownS>=end)break;
    // Includes time separation, full body, and the extra clearance margin.
-   if(overlaps(predictedFootprint(car,ownS),predictedFootprint(other,otherS))){
-    if(trace)trace.blocker={id:other.id,route:other.track.id,rule:"Předpovězený překryv obrysů vozidel",secondsAhead:+t.toFixed(2),ownPosition:+ownS.toFixed(2),otherPosition:+otherS.toFixed(2)};
+   const cautiousS=Math.min(car.track.length,start+predictedProgress(car,t,fromStop,true));
+   if(overlaps(predictedFootprint(car,ownS),predictedFootprint(other,otherS))||overlaps(predictedFootprint(car,cautiousS),predictedFootprint(other,otherS))){
+    if(trace)trace.blocker={id:other.id,route:other.track.id,rule:"Předpovězený překryv obrysů vozidel (dynamika, opatrný dojezd)",secondsAhead:+t.toFixed(2),ownPosition:+ownS.toFixed(2),cautiousPosition:+cautiousS.toFixed(2),otherPosition:+otherS.toFixed(2)};
     return {gap:Math.max(0,stop-car.s),v:0};
    }
   }
  }
+ if(trace)trace.allowed=true;
  return null;
 }
 // Diagnostic-only telemetry: each car owns its history while on the map.
@@ -377,7 +387,7 @@ function exportDiagnostics(){
  const payload={version:APP_VERSION,clock,signalsEnabled,collision:collisionReport,
   cars:cars.map(c=>({id:c.id,route:c.track.id,entryLane:c.track.entryLane,
    exitLane:c.track.exitLane,roadPriority:c.track.roadPriority,type:c.spec===VEHICLE_TYPES.truck?"truck":"car",
-   length:c.length,enteredAt:c.enteredAt,history:c.history}))};
+   length:c.length,enteredAt:c.enteredAt,entryDecision:c.entryDecision||null,history:c.history}))};
  const blob=new Blob([JSON.stringify(payload,null,2)],{type:"application/json"});
  const url=URL.createObjectURL(blob),link=document.createElement("a");
  link.href=url;link.download="semafory-"+APP_VERSION+"-diagnostika-"+formatTime(clock).replaceAll(":","-")+".json";
@@ -550,7 +560,10 @@ function animate(now){
     if(!obstacle||candidate.gap<obstacle.gap){obstacle=candidate;if(inspect)obstacleSource={rule:"Fyzická vzdálenost za vozidlem",id:other.id,route:other.track.id};}
    }
   }
-  const gate=priorityGate(car,snapshots,inspect);
+  const beforeEntry=car.s<=car.track.stopAt+.1;
+  const gateTrace=beforeEntry?{t:clock,vehicle:car.id,route:car.track.id,position:+car.s.toFixed(3),speed:+car.v.toFixed(3)}:null;
+  const gate=priorityGate(car,snapshots,gateTrace);
+  if(inspect&&gateTrace)Object.assign(inspect,gateTrace);
   if(gate&&(!obstacle||gate.gap<obstacle.gap)){obstacle=gate;if(inspect)obstacleSource={rule:"Dávání přednosti",...(inspect.blocker||{})};}
    // A red signal acts like a stationary lead vehicle at the stop line.
   if(!lightIsGreen(car.track.signal)&&car.s<car.track.stopAt){
@@ -558,7 +571,11 @@ function animate(now){
    if(!obstacle||gap<obstacle.gap){obstacle={gap,v:0};if(inspect)obstacleSource={rule:"Červený signál",signal:car.track.signal};}
   }
   if(inspect){inspect.activeObstacle=obstacleSource;inspect.obstacle=obstacle?{gap:obstacle.gap,velocity:obstacle.v}:null;car.liveInspection=inspect;}
+  const previousS=car.s;
   advanceVehicle(car,obstacle,dt);
+  if(previousS<=car.track.stopAt+.1&&car.s>car.track.stopAt+.1){
+   car.entryDecision={...gateTrace,t:+clock.toFixed(3),crossedAt:+car.s.toFixed(3),crossingSpeed:+car.v.toFixed(3),effectiveObstacle:obstacleSource||null,priorityGateBlocked:!!gate};
+  }
   recordTelemetry(car,"step",obstacle,gate);
  }
  // Detect overlap of real oriented body rectangles, not buffered prediction footprints.
