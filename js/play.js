@@ -2,7 +2,7 @@ import {VEHICLE_TYPES,advanceVehicle} from "./vehicle-dynamics.js?v=2.5.31";
 import {createSignalController} from "./signal-controller.js?v=2.4.3";
 const ns="http://www.w3.org/2000/svg",svg=document.getElementById("scene"),$=id=>document.getElementById(id);
 const map=$("map"),photoMap=$("photo-map"),markings=$("markings"),carsLayer=$("vehicles"),lights=$("lights");
-const APP_VERSION="2.5.34";
+const APP_VERSION="2.5.35";
 const FIXED_DT=0.01;let accumulator=0,dayElapsed=0,spawnBudget=0;let collisionReport=null,selectedCarId=null;let signalsEnabled=false,collisionLocked=false,tracks=[],cars=[],passed=0,running=false,clock=0,spawnClock=0,last=0,phase=0,nextId=1,signals=[],controller=null,signalLocations=[];
 function svgEl(name,attrs={}){const e=document.createElementNS(ns,name);for(const [k,v]of Object.entries(attrs))e.setAttribute(k,String(v));return e;}
 function category(el){const style=el.getAttribute("style")||"";const stroke=(el.getAttribute("stroke")||(style.match(/stroke:\s*([^;]+)/)||[])[1]||"").toLowerCase(),fill=(el.getAttribute("fill")||(style.match(/fill:\s*([^;]+)/)||[])[1]||"").toLowerCase();const c=stroke&&stroke!=="none"?stroke:fill;if(["#fff","#ffffff"].includes(c))return"markings";if(["#61cbf4","#37b5ed"].includes(c))return"lane";if(["#ffc000","#f59e0b"].includes(c))return"route";if(["#7030a0","#a855f7"].includes(c))return"boundary";if(["#00b050","#22c55e"].includes(c)||stroke==="#042433"&&fill==="#00b050")return"signal";return"map";}
@@ -634,15 +634,27 @@ function animate(now){
    // was already decided before the junction entry.
    const sameMovement=car.track===other.track;
    const commonApproach=car.track.entryLane===other.track.entryLane&&car.s<car.track.entryEnd&&other.s<other.track.entryEnd;
+   // Different turning movements still share the same PHYSICAL lane after
+   // the authored entryEnd. Follow the real vehicle ahead until the paths
+   // separate laterally; do not stop checking at the route's marker.
+   const p0=position(car.track,car.s),q0=position(other.track,other.s);
+   const angle=p0.angle*Math.PI/180,otherAngle=q0.angle*Math.PI/180;
+   const forward0=(q0.x-p0.x)*Math.cos(angle)+(q0.y-p0.y)*Math.sin(angle);
+   const lateral0=Math.abs(-(q0.x-p0.x)*Math.sin(angle)+(q0.y-p0.y)*Math.cos(angle));
+   const sharedPhysicalLane=car.track.entryLane===other.track.entryLane&&
+      Math.cos(angle-otherAngle)>.72&&forward0>0&&
+      forward0<Math.max(135,car.v*3)&&
+      lateral0<(car.spec.width+other.spec.width)/2+6;
    const commonExit=car.track.exitLane===other.track.exitLane&&car.s>=car.track.exitStart&&other.s>=other.track.exitStart;
-   if(!sameMovement&&!commonApproach&&!commonExit)continue;
+   if(!sameMovement&&!commonApproach&&!sharedPhysicalLane&&!commonExit)continue;
    const p=ownFoot.p,q=position(other.track,other.s);
    const forward=(q.x-p.x)*ownFoot.ux+(q.y-p.y)*ownFoot.uy;
    const sideways=Math.abs((q.x-p.x)*ownFoot.vx+(q.y-p.y)*ownFoot.vy);
-   if(forward<=0||forward>Math.max(85,car.v*2.2)||sideways>13)continue;
+   if(forward<=0||forward>Math.max(135,car.v*3)||sideways>(sharedPhysicalLane?(car.spec.width+other.spec.width)/2+6:13))continue;
    const clearance=footprintClearance(ownFoot,vehicleFootprint(other,1));
    if(clearance<Math.max(12,car.v*1.25)){
-    const candidate={gap:Math.max(0,clearance),v:other.v};
+    const projectedGap=forward-(car.length+other.length)/2;
+    const candidate={gap:Math.max(0,Math.min(clearance,projectedGap)),v:other.v};
     if(!obstacle||candidate.gap<obstacle.gap){obstacle=candidate;if(inspect)obstacleSource={rule:"Fyzická vzdálenost za vozidlem",id:other.id,route:other.track.id};}
    }
   }
