@@ -2,7 +2,7 @@ import {VEHICLE_TYPES,advanceVehicle} from "./vehicle-dynamics.js?v=2.3";
 import {createSignalController} from "./signal-controller.js?v=2.4.3";
 const ns="http://www.w3.org/2000/svg",svg=document.getElementById("scene"),$=id=>document.getElementById(id);
 const map=$("map"),photoMap=$("photo-map"),markings=$("markings"),carsLayer=$("vehicles"),lights=$("lights");
-const APP_VERSION="2.5.29";
+const APP_VERSION="2.5.30";
 const FIXED_DT=0.01;let accumulator=0,dayElapsed=0,spawnBudget=0;let collisionReport=null,selectedCarId=null;let signalsEnabled=false,collisionLocked=false,tracks=[],cars=[],passed=0,running=false,clock=0,spawnClock=0,last=0,phase=0,nextId=1,signals=[],controller=null,signalLocations=[];
 function svgEl(name,attrs={}){const e=document.createElementNS(ns,name);for(const [k,v]of Object.entries(attrs))e.setAttribute(k,String(v));return e;}
 function category(el){const style=el.getAttribute("style")||"";const stroke=(el.getAttribute("stroke")||(style.match(/stroke:\s*([^;]+)/)||[])[1]||"").toLowerCase(),fill=(el.getAttribute("fill")||(style.match(/fill:\s*([^;]+)/)||[])[1]||"").toLowerCase();const c=stroke&&stroke!=="none"?stroke:fill;if(["#fff","#ffffff"].includes(c))return"markings";if(["#61cbf4","#37b5ed"].includes(c))return"lane";if(["#ffc000","#f59e0b"].includes(c))return"route";if(["#7030a0","#a855f7"].includes(c))return"boundary";if(["#00b050","#22c55e"].includes(c)||stroke==="#042433"&&fill==="#00b050")return"signal";return"map";}
@@ -426,23 +426,24 @@ function updateDayClock(){
  const mul=$("current-profile");if(mul)mul.textContent=trafficProfile(h).toFixed(2)+"×";
 }
 const TRAFFIC_SURVEY_MOVEMENTS=Object.freeze({T01:2356,T02:2077,T03:1323,T04:1767,T05:779,T06:758});
-function sampleTrafficMovement(){
- const total=tracks.reduce((sum,t)=>sum+(TRAFFIC_SURVEY_MOVEMENTS[t.id]||0),0);
- if(total<=0)return tracks[Math.floor(Math.random()*tracks.length)];
+function sampleTrafficMovement(options=tracks){
+ const total=options.reduce((sum,t)=>sum+(TRAFFIC_SURVEY_MOVEMENTS[t.id]||0),0);
+ if(total<=0)return options[Math.floor(Math.random()*options.length)];
  let draw=Math.random()*total;
- for(const track of tracks){draw-=TRAFFIC_SURVEY_MOVEMENTS[track.id]||0;if(draw<0)return track;}
- return tracks[tracks.length-1];
+ for(const track of options){draw-=TRAFFIC_SURVEY_MOVEMENTS[track.id]||0;if(draw<0)return track;}
+ return options[options.length-1];
 }
 function spawn(){
  if(!tracks.length||cars.length>90)return;
  // Observed directional traffic counts at Massag, survey April 2018.
- const t=sampleTrafficMovement();
- if(cars.some(c=>c.track.entryLane===t.entryLane&&c.s-c.length/2<65))return;
+ const available=tracks.filter(t=>!cars.some(c=>c.track.entryLane===t.entryLane&&c.s-c.length/2<65));
+ if(!available.length)return false;
+ const t=sampleTrafficMovement(available);
  const truck=Math.random()<.09,spec=truck?VEHICLE_TYPES.truck:VEHICLE_TYPES.car;const g=svgEl("g"),body=svgEl("rect",{x:truck?-17:-12,y:truck?-6:-5,width:truck?34:24,height:truck?12:10,rx:2,fill:truck?"#f0c673":["#fff5bf","#e14e5a","#61b9ef","#9ee08e"][Math.floor(Math.random()*4)],stroke:"#172536","stroke-width":1.5});
  g.append(body);g.append(svgEl("rect",{x:truck?-23:-19,y:-17,width:truck?46:38,height:34,fill:"transparent","pointer-events":"all"}));carsLayer.append(g);const car={id:nextId++,track:t,s:0,v:spec.cruise,length:spec.length,spec,el:g,
   enteredAt:clock,history:[],lastTelemetryTick:-1,lastTelemetryState:""};
  car.el.style.cursor="pointer";car.el.addEventListener("click",e=>{e.stopPropagation();selectedCarId=car.id;updateInspector();});
- cars.push(car);recordTelemetry(car,"spawn",null,null,true);
+ cars.push(car);recordTelemetry(car,"spawn",null,null,true);return true;
 }
 function locateSignals(parts){
  // Signal marker order is the canonical S01, S02 ... identifier order.
@@ -504,12 +505,13 @@ function animate(now){
  if(!last)last=now;const real=Math.min(.05,(now-last)/1000);last=now;
  if(running){accumulator+=real*Number($("speed").value);dayElapsed+=real;}
  updateDayClock();
- while(running&&accumulator>=FIXED_DT){const dt=FIXED_DT;accumulator-=FIXED_DT;clock+=dt;if(signalsEnabled)controller.tick(dt,active=>cars.some(c=>!freeSignals.has(c.track.signal)&&active.includes(c.track.signal)&&c.s>=c.track.stopAt&&c.s<c.track.exitStart+c.length));// Spawn budget is linked to real elapsed time, not physics speed.
- // Scaling to the 24h clock changes the distribution, but does NOT
- // attempt to inject a whole day's vehicles into a 10-minute road model.
- const currentRate=trafficProfile(dayHour())*Number($("rate").value)/2.6;
- spawnBudget+=dt/Math.max(1,Number($("speed").value))*currentRate;
- while(spawnBudget>=1){spawnBudget-=1;spawn();}
+ while(running&&accumulator>=FIXED_DT){const dt=FIXED_DT;accumulator-=FIXED_DT;clock+=dt;if(signalsEnabled)controller.tick(dt,active=>cars.some(c=>!freeSignals.has(c.track.signal)&&active.includes(c.track.signal)&&c.s>=c.track.stopAt&&c.s<c.track.exitStart+c.length));// Traffic clock runs 24h/12min, but the vehicle density must scale with
+ // PHYSICAL simulation time. The old /speed term reduced density at 5×.
+ // A multiplier of 1× uses a calibrated visual arrival rate (~1.3 veh/s
+ // near the reference hour), not a literal 24h volume in 12 minutes.
+ const currentRate=1.3*trafficProfile(dayHour())*Number($("rate").value);
+ spawnBudget=Math.min(6,spawnBudget+dt*currentRate);
+ while(spawnBudget>=1){if(!spawn())break;spawnBudget-=1;}
  // Take one consistent snapshot so all vehicles react to the same traffic state.
  const snapshots=cars.map(c=>({...c}));
  for(const car of cars){
