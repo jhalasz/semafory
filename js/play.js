@@ -349,13 +349,18 @@ function priorityGate(car,snapshot,trace=null){
     return {gap:Math.max(0,stop-car.s),v:0};
    }
   }
-  for(let t=0;t<=horizon;t+=.1){
-   const ownS=Math.min(car.track.length,start+predictedProgress(car,t,fromStop));
-   const otherS=Math.min(other.track.length,other.s+predictedProgress(other,t,false));
-   if(ownS>=end)break;
-   // Includes time separation, full body, and the extra clearance margin.
-   const cautiousS=Math.min(car.track.length,start+predictedProgress(car,t,fromStop,true));
-   if(overlaps(predictedFootprint(car,ownS),predictedFootprint(other,otherS))||overlaps(predictedFootprint(car,cautiousS),predictedFootprint(other,otherS))){
+  const mainGhost={s:0,v:fromStop?0:car.v,spec:car.spec};
+  const cautiousGhost={s:0,v:fromStop?0:car.v*.6,spec:car.spec};
+  const otherGhost={s:0,v:other.v,spec:other.spec};
+  for(let tick=0;tick<=Math.ceil(horizon/.1);tick++){
+   if(tick){advanceVehicle(mainGhost,null,.1);advanceVehicle(cautiousGhost,null,.1);advanceVehicle(otherGhost,null,.1);}
+   const t=tick*.1;
+   const ownS=Math.min(car.track.length,start+mainGhost.s);
+   const cautiousS=Math.min(car.track.length,start+Math.min(mainGhost.s,cautiousGhost.s*.85));
+   const otherS=Math.min(other.track.length,other.s+otherGhost.s);
+   if(ownS>=end&&cautiousS>=end)break;
+   if(overlaps(predictedFootprint(car,ownS),predictedFootprint(other,otherS))||
+      overlaps(predictedFootprint(car,cautiousS),predictedFootprint(other,otherS))){
     if(trace)trace.blocker={id:other.id,route:other.track.id,rule:"Předpovězený překryv obrysů vozidel (dynamika, opatrný dojezd)",secondsAhead:+t.toFixed(2),ownPosition:+ownS.toFixed(2),cautiousPosition:+cautiousS.toFixed(2),otherPosition:+otherS.toFixed(2)};
     return {gap:Math.max(0,stop-car.s),v:0};
    }
