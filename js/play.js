@@ -2,7 +2,7 @@ import {VEHICLE_TYPES,advanceVehicle} from "./vehicle-dynamics.js?v=2.5.31";
 import {createSignalController} from "./signal-controller.js?v=2.4.3";
 const ns="http://www.w3.org/2000/svg",svg=document.getElementById("scene"),$=id=>document.getElementById(id);
 const map=$("map"),photoMap=$("photo-map"),markings=$("markings"),carsLayer=$("vehicles"),lights=$("lights");
-const APP_VERSION="2.5.41";
+const APP_VERSION="2.5.42";
 const FIXED_DT=0.01;let accumulator=0,dayElapsed=0,spawnBudget=0;let collisionReport=null,selectedCarId=null;let signalsEnabled=false,collisionLocked=false,tracks=[],cars=[],passed=0,routeStats=new Map(),running=false,clock=0,spawnClock=0,last=0,phase=0,nextId=1,signals=[],controller=null,signalLocations=[];
 function svgEl(name,attrs={}){const e=document.createElementNS(ns,name);for(const [k,v]of Object.entries(attrs))e.setAttribute(k,String(v));return e;}
 function category(el){const style=el.getAttribute("style")||"";const stroke=(el.getAttribute("stroke")||(style.match(/stroke:\s*([^;]+)/)||[])[1]||"").toLowerCase(),fill=(el.getAttribute("fill")||(style.match(/fill:\s*([^;]+)/)||[])[1]||"").toLowerCase();const c=stroke&&stroke!=="none"?stroke:fill;if(["#fff","#ffffff"].includes(c))return"markings";if(["#61cbf4","#37b5ed"].includes(c))return"lane";if(["#ffc000","#f59e0b"].includes(c))return"route";if(["#7030a0","#a855f7"].includes(c))return"boundary";if(["#00b050","#22c55e"].includes(c)||stroke==="#042433"&&fill==="#00b050")return"signal";return"map";}
@@ -649,7 +649,8 @@ function animate(now){
  // PHYSICAL simulation time. The old /speed term reduced density at 5×.
  // A multiplier of 1× uses a calibrated visual arrival rate (~1.3 veh/s
  // near the reference hour), not a literal 24h volume in 12 minutes.
- const currentRate=1.3*trafficProfile(dayHour())*Number($("rate").value);
+ // In 2.5.42 intensity 1.0 equals intensity 0.5 in 2.5.41.
+ const currentRate=0.65*trafficProfile(dayHour())*Number($("rate").value);
  spawnBudget=Math.min(6,spawnBudget+dt*currentRate);
  while(spawnBudget>=1){if(!spawn())break;spawnBudget-=1;}
  // Take one consistent snapshot so all vehicles react to the same traffic state.
