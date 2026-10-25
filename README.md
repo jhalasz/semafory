@@ -7,9 +7,9 @@ Webová aplikace pro přípravu křižovatek a experimentální simulaci dopravn
 | Část | Aktuální verze | Dokumentace | Aplikace |
 | --- | --- | --- | --- |
 | Intersection Builder | **2.6.4** | [BUILDER.md](BUILDER.md) | [Otevřít Builder](https://jhalasz.github.io/semafory/) |
-| Veřejná hra | **2.6.2** | [HRA.md](HRA.md) | [Otevřít hru](https://jhalasz.github.io/semafory/hra.html) |
+| Veřejná hra | **2.6.3** | [HRA.md](HRA.md) | [Otevřít hru](https://jhalasz.github.io/semafory/hra.html) |
 
-**Builder** připravuje a ukládá projekty křižovatek (SVG, vrstvy, návaznosti a nastavení). **Hra** vykonává dopravní simulaci a ve verzi 2.6.2 umí přepínat mezi zveřejněnými i místními projekty křižovatek. Číslování verzí je oddělené.
+**Builder** připravuje a ukládá projekty křižovatek (SVG, vrstvy, návaznosti a nastavení). **Hra** vykonává dopravní simulaci a ve verzi 2.6.3 umí přepínat mezi zveřejněnými i místními projekty křižovatek. Číslování verzí je oddělené.
 
 ## Architektonické zásady
 
@@ -17,7 +17,7 @@ Webová aplikace pro přípravu křižovatek a experimentální simulaci dopravn
 - Každá křižovatka je samostatný datový projekt; nové projekty nesmějí přepsat předchozí konfigurace.
 - Fotomapa a vektorové prvky používají společné souřadnice; změna vzhledu nebo zoomu nesmí měnit geometrii.
 - Bílé reálné vodorovné značení je oddělené od logických, nemusících být nakreslených pruhů.
-- Hra 2.6.2 umožňuje volbu křižovatky; dalším krokem je jejich přiřazování herním levelům.
+- Hra 2.6.3 umožňuje volbu křižovatky; dalším krokem je jejich přiřazování herním levelům.
 
 ## Publikování
 
