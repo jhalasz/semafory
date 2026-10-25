@@ -101,6 +101,11 @@
           ]
         }
       }
+    },
+    {
+      "id": "ed90397c-b743-4f98-bcd8-b68975e93a42",
+      "name": "Kaple",
+      "file": "kaple.json"
     }
   ]
 }
