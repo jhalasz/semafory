@@ -1,5 +1,69 @@
 {
   "format": "semafory-project-index",
-  "version": 1,
-  "projects": []
+  "version": 2,
+  "projects": [
+    {
+      "id": "3a0b71ad-d115-46cf-b767-cbf3791edd21",
+      "name": "Massag 4",
+      "file": "massag-4.json",
+      "game": {
+        "roadPriorityByLane": {
+          "P03": "main",
+          "P04": "main",
+          "P01": "minor",
+          "P07": "minor"
+        },
+        "trafficWeights": {
+          "T01": 2356,
+          "T02": 2077,
+          "T03": 1323,
+          "T04": 1767,
+          "T05": 779,
+          "T06": 758
+        },
+        "truckShare": 0.05,
+        "baseSpawnRate": 0.65,
+        "dailyProfile": [
+          0.22,
+          0.14,
+          0.1,
+          0.09,
+          0.12,
+          0.23,
+          0.55,
+          1.105201,
+          0.963357,
+          0.892435,
+          0.756501,
+          0.667849,
+          0.892435,
+          0.898345,
+          1.359338,
+          1.382979,
+          1.08156,
+          0.68,
+          0.57,
+          0.46,
+          0.37,
+          0.32,
+          0.27,
+          0.24
+        ],
+        "sharedApproaches": [
+          {
+            "movement": "T03",
+            "commonLane": "P01",
+            "branchLane": "P07",
+            "maxJoinDistance": 45
+          }
+        ],
+        "signalLabels": {
+          "S01": "Dukelská",
+          "S02": "Opavská",
+          "S03": "Nová cesta",
+          "S04": "Napojení"
+        }
+      }
+    }
+  ]
 }
