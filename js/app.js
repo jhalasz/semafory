@@ -15,7 +15,7 @@ let fileUrl=null,sourceSvg=null,projectId=null,loading=false,saveTimer=null,beau
 for(const [key,label,color] of keys){
  const row=document.createElement("div");row.className="layer";
  const check=document.createElement("input");check.type="checkbox";check.checked=true;
- check.onchange=()=>el(key).setAttribute("visibility",check.checked?"visible":"hidden");
+ check.onchange=()=>{el(key).setAttribute("visibility",check.checked?"visible":"hidden");scene.dispatchEvent(new Event("semafory:layer-visibility"));};
  const chip=document.createElement("span");chip.className="swatch";chip.style.background=color;
  const name=document.createElement("label");name.textContent=label;
  const opacity=document.createElement("input");opacity.type="range";opacity.min=0;opacity.max=100;opacity.value=100;
@@ -290,6 +290,7 @@ async function loadProject(data,{skipSave=false,copy=false}={}){
   for(const [key,visible] of Object.entries(data.visibility||{})){
    if(keys.some(([k])=>k===key))el(key).setAttribute("visibility",visible?"visible":"hidden");
   }
+  scene.dispatchEvent(new Event("semafory:layer-visibility"));
   const useBeautified=!!data.beautifiedMap&&(data.visibility?.beautified!==false);
   document.getElementById("show-beautified-map").checked=useBeautified;
   document.getElementById("show-original-map").checked=!useBeautified;
