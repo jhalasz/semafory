@@ -126,7 +126,16 @@
     {
       "id": "ed90397c-b743-4f98-bcd8-b68975e93a42",
       "name": "Kaple",
-      "file": "kaple.json"
+      "file": "kaple.json",
+      "game": {
+        "truckForbiddenLanes": [
+          "P07",
+          "P08"
+        ],
+        "truckShare": 0.05,
+        "trafficModelStatus": "unverified",
+        "trafficModelNote": "Traffic intensity proportions for Kaple are not calibrated; no verified origin-destination counts. Northwest narrow approach P07/P08 prohibits trucks."
+      }
     }
   ]
 }
