@@ -236,11 +236,11 @@ async function listProjects(){
  }catch(e){console.warn("GitHub seznam není dostupný",e);}
  list.value=current;
 }
-async function loadProject(data,{skipSave=false}={}){
+async function loadProject(data,{skipSave=false,copy=false}={}){
  if(data.format!=="semafory-project"||!data.svg?.content)throw Error("Projekt neobsahuje SVG. Otevři úplný projekt.");
  loading=true;
  try{
-  projectId=data.id||crypto.randomUUID();signalPlan=data.signalPlan||null;
+  projectId=copy?crypto.randomUUID():(data.id||crypto.randomUUID());signalPlan=data.signalPlan||null;
   document.getElementById("project-name").value=data.name||"";
   svgImport(data.svg.content,data.svg.name||data.name||"Projekt");
   directions?.restore(data.directions);
@@ -264,6 +264,29 @@ async function loadProject(data,{skipSave=false}={}){
  }finally{loading=false;}
  if(!skipSave)await saveProject();
 }
+document.getElementById("project-new").onclick=()=>{
+ if(sourceSvg&&!confirm("Založit novou prázdnou křižovatku? Současný projekt zůstane uložený v knihovně."))return;
+ clearTimeout(saveTimer);
+ sourceSvg=null;projectId=null;signalPlan=null;beautifiedMap=null;
+ localStorage.removeItem("semafory-last-project");
+ clear();input.value="";if(fileUrl)URL.revokeObjectURL(fileUrl);fileUrl=null;
+ document.getElementById("project-name").value="";
+ ph.setAttribute("visibility","visible");status.textContent="Nová křižovatka";note.textContent="";
+ showProjectStatus("Nová prázdná křižovatka. Nahraj její SVG; Massag zůstává uložený.");
+};
+document.getElementById("project-copy").onclick=async()=>{
+ const data=snapshot();
+ if(!data){showProjectStatus("Nejprve otevři projekt, který chceš zkopírovat.");return;}
+ const original=data.name||"Křižovatka";
+ const name=prompt("Název nové samostatné kopie:",original+" – kopie");
+ if(name===null)return;
+ if(!name.trim()){showProjectStatus("Zadej název nové křižovatky.");return;}
+ clearTimeout(saveTimer);
+ projectId=crypto.randomUUID();
+ document.getElementById("project-name").value=name.trim();
+ await saveProject();
+ showProjectStatus("Nová samostatná kopie uložena: "+name.trim()+". Původní projekt zůstává zachován.");
+};
 document.getElementById("project-save").onclick=()=>saveProject();
 document.getElementById("project-name").addEventListener("change",()=>saveProject());
 scene.addEventListener("semafory:project-changed",()=>{
@@ -292,7 +315,7 @@ document.getElementById("project-export").onclick=()=>{
 };
 document.getElementById("project-import").addEventListener("change",async e=>{
  const f=e.target.files[0];e.target.value="";if(!f)return;
- try{await loadProject(JSON.parse(await f.text()));}catch(err){showProjectStatus("Import selhal: "+err.message);}
+ try{await loadProject(JSON.parse(await f.text()),{copy:true});showProjectStatus("Importováno jako nový samostatný projekt, původní projekty zachovány.");}catch(err){showProjectStatus("Import selhal: "+err.message);}
 });
 (async()=>{await listProjects();try{const id=localStorage.getItem("semafory-last-project");if(id){const saved=await projectStore.get(id);if(saved)await loadProject(saved);}}catch(e){showProjectStatus("Obnovení posledního projektu: "+e.message);}})();
 
