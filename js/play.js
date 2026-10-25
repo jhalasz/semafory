@@ -3,7 +3,7 @@ import {createSignalController} from "./signal-controller.js?v=2.4.3";
 import {projectStore} from "./project-store.js?v=1.7";
 const ns="http://www.w3.org/2000/svg",svg=document.getElementById("scene"),$=id=>document.getElementById(id);
 const map=$("map"),photoMap=$("photo-map"),markings=$("markings"),carsLayer=$("vehicles"),lights=$("lights");
-const APP_VERSION="2.6.5";
+const APP_VERSION="2.6.6";
 const FIXED_DT=0.01;let accumulator=0,dayElapsed=0,spawnBudget=0;let collisionReport=null,selectedCarId=null;let signalsEnabled=false,collisionLocked=false,tracks=[],cars=[],passed=0,routeStats=new Map(),running=false,clock=0,spawnClock=0,last=0,phase=0,nextId=1,signals=[],controller=null,signalLocations=[];let activeProject=null,activeGameConfig={},projectCatalog=[];
 function svgEl(name,attrs={}){const e=document.createElementNS(ns,name);for(const [k,v]of Object.entries(attrs))e.setAttribute(k,String(v));return e;}
 function category(el){const style=el.getAttribute("style")||"";const stroke=(el.getAttribute("stroke")||(style.match(/stroke:\s*([^;]+)/)||[])[1]||"").toLowerCase(),fill=(el.getAttribute("fill")||(style.match(/fill:\s*([^;]+)/)||[])[1]||"").toLowerCase();const c=stroke&&stroke!=="none"?stroke:fill;if(["#fff","#ffffff"].includes(c))return"markings";if(["#61cbf4","#37b5ed"].includes(c))return"lane";if(["#ffc000","#f59e0b"].includes(c))return"route";if(["#7030a0","#a855f7"].includes(c))return"boundary";if(["#00b050","#22c55e"].includes(c)||stroke==="#042433"&&fill==="#00b050")return"signal";return"map";}
@@ -114,7 +114,37 @@ function readSvg(xml){
    }
    const width=Number(photoSource.getAttribute("width"))||1149,height=Number(photoSource.getAttribute("height"))||928;
    const rect=svgEl("image",{width,height,preserveAspectRatio:"none"});
-   rect.setAttribute("href",href);rect.setAttribute("transform",`matrix(${[matrix.a,matrix.b,matrix.c,matrix.d,matrix.e,matrix.f].join(" ")})`);photoMap.append(rect);
+   rect.setAttribute("href",href);rect.setAttribute("transform",`matrix(${[matrix.a,matrix.b,matrix.c,matrix.d,matrix.e,matrix.f].join(" ")})`);
+   // The export clips the photograph inside transformed parent groups.
+   // The standalone image has no parents, so reproduce their outer clipping.
+   // Without this, hidden photo content spills far below the Builder crop.
+   const clippedAncestor=[...function*(){for(let n=use.parentElement;n&&n!==root;n=n.parentElement)yield n;}()]
+    .reverse().find(n=>n.hasAttribute("clip-path"));
+   if(clippedAncestor){
+    const match=(clippedAncestor.getAttribute("clip-path")||"").match(/url\\(#([^)]*)\\)/);
+    const sourceClip=match&&[...root.querySelectorAll("clipPath")].find(n=>n.id===match[1]);
+    const bounds=sourceClip?.querySelector("rect");
+    if(bounds){
+     let clipMatrix=new DOMMatrix();
+     const chain=[];for(let n=clippedAncestor;n&&n!==root;n=n.parentElement)if(n.hasAttribute("transform"))chain.unshift(n.getAttribute("transform"));
+     for(const transform of chain){
+      for(const op of transform.matchAll(/(matrix|translate|scale|rotate)\\s*\\(([^)]*)\\)/g)){
+       const nums=(op[2].match(/[-+]?(?:\\d*\\.)?\\d+(?:[eE][-+]?\\d+)?/g)||[]).map(Number);
+       if(op[1]==="matrix"&&nums.length===6)clipMatrix=clipMatrix.multiply(new DOMMatrix(nums));
+       else if(op[1]==="translate")clipMatrix=clipMatrix.translate(nums[0]||0,nums[1]||0);
+       else if(op[1]==="scale")clipMatrix=clipMatrix.scale(nums[0]??1,nums[1]??nums[0]??1);
+       else if(op[1]==="rotate")clipMatrix=clipMatrix.rotate(nums[0]||0);
+      }
+     }
+     const clipId="game-photo-crop";
+     const clip=svgEl("clipPath",{id:clipId,clipPathUnits:"userSpaceOnUse"});
+     const mask=svgEl("rect",{x:bounds.getAttribute("x")||0,y:bounds.getAttribute("y")||0,width:bounds.getAttribute("width"),height:bounds.getAttribute("height")});
+     mask.setAttribute("transform",`matrix(${[clipMatrix.a,clipMatrix.b,clipMatrix.c,clipMatrix.d,clipMatrix.e,clipMatrix.f].join(" ")})`);
+     clip.append(mask);$("defs").append(clip);
+     photoMap.setAttribute("clip-path",`url(#${clipId})`);
+    }
+   }
+   photoMap.append(rect);
   }
  }
  // Hide configuration markup; movement remains aligned in the same coordinates.
