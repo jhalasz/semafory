@@ -3,7 +3,7 @@ import {createConflictEditor} from "./conflict-editor.js?v=2.0";
 import {createMovementEditor} from "./movement-editor.js?v=1.9";
 import {createControlEditor} from "./control-editor.js?v=1.8.2";
 import {projectStore} from "./project-store.js?v=1.7";
-import {createDirectionEditor} from "./directions.js?v=1.6";
+import {createDirectionEditor} from "./directions.js?v=2.6.4";
 import {createConnectionEditor} from "./connection-editor.js?v=1.6";
 let connections=null,directions=null,controls=null,movements=null,conflicts=null;
 const driverRisk=new DriverRiskModel();
