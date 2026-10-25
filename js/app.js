@@ -371,6 +371,43 @@ function setBeautifiedMap(asset){
  toggle.checked=true;originalToggle.checked=false;
  el("photo").setAttribute("visibility","hidden");group.setAttribute("visibility","visible");
 }
+
+const zoomSlider=document.getElementById("map-zoom");
+const zoomLabel=document.getElementById("map-zoom-label");
+const zoomReset=document.getElementById("map-zoom-reset");
+const getView=()=>scene.getAttribute("viewBox").trim().split(/[\\s,]+/).map(Number);
+const getHome=()=>fullViewBox?fullViewBox.trim().split(/[\\s,]+/).map(Number):null;
+function updateZoomDisplay(){
+ const home=getHome(),view=getView();
+ const level=home&&view[2]>0?Math.round(100*home[2]/view[2]):100;
+ zoomSlider.value=String(Math.max(100,Math.min(800,level)));
+ zoomLabel.textContent=level+" %";
+}
+function applyMapZoom(level,focus=null){
+ const home=getHome();
+ if(!home)return;
+ const old=getView();
+ const z=Math.max(1,Math.min(8,level));
+ const width=home[2]/z,height=home[3]/z;
+ // Keep the point under the mouse at the same screen position.
+ const anchor=focus||{x:old[0]+old[2]/2,y:old[1]+old[3]/2};
+ const tx=(anchor.x-old[0])/old[2],ty=(anchor.y-old[1])/old[3];
+ scene.setAttribute("viewBox",[anchor.x-tx*width,anchor.y-ty*height,width,height].join(" "));
+ updateZoomDisplay();
+}
+scene.addEventListener("wheel",e=>{
+ if(!fullViewBox)return;
+ e.preventDefault();
+ const matrix=scene.getScreenCTM();
+ if(!matrix)return;
+ const p=new DOMPoint(e.clientX,e.clientY).matrixTransform(matrix.inverse());
+ const current=getView(),home=getHome();
+ const zoom=home[2]/current[2];
+ applyMapZoom(zoom*Math.exp(-Math.sign(e.deltaY)*0.16),p);
+},{passive:false});
+zoomSlider.addEventListener("input",()=>applyMapZoom(Number(zoomSlider.value)/100));
+zoomReset.addEventListener("click",()=>{if(fullViewBox)scene.setAttribute("viewBox",fullViewBox);updateZoomDisplay();});
+new MutationObserver(updateZoomDisplay).observe(scene,{attributes:true,attributeFilter:["viewBox"]});
 const fullButton=document.getElementById("show-full-map");
 function restoreFullView(){
  if(!fullViewBox)return;
