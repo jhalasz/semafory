@@ -1,10 +1,10 @@
 // Universal longitudinal vehicle dynamics. Units: SVG distance units / simulation second.
 // Geometry calibration for the active map: 8 SVG units per metre (720 units / 90 metres).
-// 50 km/h = 111.11 units/s, car length 4.5 m = 36 units.
+// 50 km/h = 111.11 units/s, Vehicle sprite and collision dimensions are 80% of the previous prototype scale.
 // No assumptions about Massag geometry, traffic signals or intersection topology.
 export const VEHICLE_TYPES=Object.freeze({
- car:Object.freeze({length:36,width:14.4,cruise:111.11,maxAcceleration:16,comfortableBrake:24,emergencyBrake:48,reaction:0.75,minimumGap:12}),
- truck:Object.freeze({length:64,width:20,cruise:88.89,maxAcceleration:9.6,comfortableBrake:18,emergencyBrake:40,reaction:1.05,minimumGap:16})
+ car:Object.freeze({length:28.8,width:11.52,cruise:111.11,maxAcceleration:16,comfortableBrake:24,emergencyBrake:48,reaction:0.75,minimumGap:12}),
+ truck:Object.freeze({length:51.2,width:16,cruise:88.89,maxAcceleration:9.6,comfortableBrake:18,emergencyBrake:40,reaction:1.05,minimumGap:16})
 });
 const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
 export function desiredGap(vehicle,leader){
