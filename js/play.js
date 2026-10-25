@@ -3,7 +3,7 @@ import {createSignalController} from "./signal-controller.js?v=2.4.3";
 import {projectStore} from "./project-store.js?v=1.7";
 const ns="http://www.w3.org/2000/svg",svg=document.getElementById("scene"),$=id=>document.getElementById(id);
 const map=$("map"),photoMap=$("photo-map"),markings=$("markings"),carsLayer=$("vehicles"),lights=$("lights");
-const APP_VERSION="2.6";
+const APP_VERSION="2.6.1";
 const FIXED_DT=0.01;let accumulator=0,dayElapsed=0,spawnBudget=0;let collisionReport=null,selectedCarId=null;let signalsEnabled=false,collisionLocked=false,tracks=[],cars=[],passed=0,routeStats=new Map(),running=false,clock=0,spawnClock=0,last=0,phase=0,nextId=1,signals=[],controller=null,signalLocations=[];let activeProject=null,activeGameConfig={},projectCatalog=[];
 function svgEl(name,attrs={}){const e=document.createElementNS(ns,name);for(const [k,v]of Object.entries(attrs))e.setAttribute(k,String(v));return e;}
 function category(el){const style=el.getAttribute("style")||"";const stroke=(el.getAttribute("stroke")||(style.match(/stroke:\s*([^;]+)/)||[])[1]||"").toLowerCase(),fill=(el.getAttribute("fill")||(style.match(/fill:\s*([^;]+)/)||[])[1]||"").toLowerCase();const c=stroke&&stroke!=="none"?stroke:fill;if(["#fff","#ffffff"].includes(c))return"markings";if(["#61cbf4","#37b5ed"].includes(c))return"lane";if(["#ffc000","#f59e0b"].includes(c))return"route";if(["#7030a0","#a855f7"].includes(c))return"boundary";if(["#00b050","#22c55e"].includes(c)||stroke==="#042433"&&fill==="#00b050")return"signal";return"map";}
@@ -41,6 +41,29 @@ function readSvg(xml){
  // Only remove authoring overlays; invisible geometry above remains
  // available for car path sampling.
  const nativeRoot=document.importNode(root,true);
+ // Builder 2.6.4 excludes large white export-page rectangles from its map.
+ // The player must do the same; otherwise the original SVG tree paints
+ // white slide blocks on top of the aerial image.
+ const pageNumbers=(root.getAttribute("viewBox")||"").trim().split(/[\\s,]+/).map(Number);
+ const page=pageNumbers.length===4&&pageNumbers.every(Number.isFinite)
+  ?{x:pageNumbers[0],y:pageNumbers[1],width:pageNumbers[2],height:pageNumbers[3]}
+  :{x:0,y:0,width:parseFloat(root.getAttribute("width"))||1280,height:parseFloat(root.getAttribute("height"))||720};
+ for(const rect of [...nativeRoot.querySelectorAll("rect")]){
+  const fill=(rect.getAttribute("fill")||((rect.getAttribute("style")||"").match(/fill:\\s*([^;]+)/)||[])[1]||"").replace(/\\s+/g,"").toLowerCase();
+  if(!["#fff","#ffffff","white","rgb(255,255,255)"].includes(fill))continue;
+  const x=Number(rect.getAttribute("x"))||0,y=Number(rect.getAttribute("y"))||0;
+  const width=Number(rect.getAttribute("width")),height=Number(rect.getAttribute("height"));
+  if(!(width>0&&height>0))continue;
+  const tolerance=Math.max(page.width,page.height)*.002;
+  const fullPage=Math.abs(x-page.x)<=tolerance&&Math.abs(y-page.y)<=tolerance&&
+   Math.abs(width-page.width)<=tolerance&&Math.abs(height-page.height)<=tolerance;
+  // Oversized plain-white rectangles in PowerPoint exports can also be
+  // partial page backgrounds. Small white road markings remain untouched.
+  const stroke=(rect.getAttribute("stroke")||"").toLowerCase();
+  const largeBlank=width>page.width*.15&&height>page.height*.15&&
+   width*height>page.width*page.height*.025&&(!stroke||stroke==="none");
+  if(fullPage||largeBlank)rect.remove();
+ }
  nativeRoot.removeAttribute("width");nativeRoot.removeAttribute("height");
  nativeRoot.setAttribute("width","100%");nativeRoot.setAttribute("height","100%");
  for(const node of [...nativeRoot.querySelectorAll("path,line,polyline,circle,ellipse,polygon,use")]){
