@@ -1,6 +1,6 @@
-# Dopravní model pro navazující křižovatku – Radotínská
+# Dopravní model Kaple – poměry provozu
 
-Zdroj: pracovní dohoda v projektu Semafory, 21. 9. 2026. Toto jsou **modelové poměry pro level 2**, nikoliv přímo naměřené intenzity generelu.
+Zdroj: pracovní dohoda v projektu Semafory, 21. 9. 2026. Toto jsou **modelové poměry pro Kapli**, nikoliv přímo naměřené intenzity generelu.
 
 ## Směrové proudy (100 vozidel)
 
@@ -20,3 +20,7 @@ Průzkum duben 2018: 9 060 vozidel, šest směrů. Poměry průjezdů i počty n
 ## Velikost aut ve hře 2.6.3
 
 Osobní vozidlo 28,8 × 11,52 SVG jednotek, nákladní vozidlo 51,2 × 16 SVG jednotek. Rozměry byly oproti 2.6.2 sníženy o 20 % v jednotném fyzikálním modelu `js/vehicle-dynamics.js` (vykreslení, vzdálenostní model, kolizní obálka).
+
+## Použití ve hře 2.6.9
+
+Poměr náleží ke křižovatce Kaple; v katalogu `projects/index.json` jsou nyní naváženy všechny průjezdy T01–T12 (59 % T05/T07; 35 % T01/T03/T04/T08; 5 % T06/T09/T10/T12; 1 % T02/T11). Rozdělení mezi průjezdy v každé skupině je prozatím rovnoměrný pracovní předpoklad.
