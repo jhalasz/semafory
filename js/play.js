@@ -1,4 +1,4 @@
-import {VEHICLE_TYPES,advanceVehicle} from "./vehicle-dynamics.js?v=2.6.3";
+import {VEHICLE_TYPES,advanceVehicle} from "./vehicle-dynamics.js?v=2.6.5";
 import {createSignalController} from "./signal-controller.js?v=2.4.3";
 import {projectStore} from "./project-store.js?v=1.7";
 const ns="http://www.w3.org/2000/svg",svg=document.getElementById("scene"),$=id=>document.getElementById(id);
