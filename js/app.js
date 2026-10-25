@@ -375,8 +375,8 @@ function setBeautifiedMap(asset){
 const zoomSlider=document.getElementById("map-zoom");
 const zoomLabel=document.getElementById("map-zoom-label");
 const zoomReset=document.getElementById("map-zoom-reset");
-const getView=()=>scene.getAttribute("viewBox").trim().split(/[\\s,]+/).map(Number);
-const getHome=()=>fullViewBox?fullViewBox.trim().split(/[\\s,]+/).map(Number):null;
+const getView=()=>scene.getAttribute("viewBox").trim().split(/[\s,]+/).map(Number);
+const getHome=()=>fullViewBox?fullViewBox.trim().split(/[\s,]+/).map(Number):null;
 function updateZoomDisplay(){
  const home=getHome(),view=getView();
  const level=home&&view[2]>0?Math.round(100*home[2]/view[2]):100;
