@@ -44,12 +44,12 @@ function readSvg(xml){
  // Builder 2.6.4 excludes large white export-page rectangles from its map.
  // The player must do the same; otherwise the original SVG tree paints
  // white slide blocks on top of the aerial image.
- const pageNumbers=(root.getAttribute("viewBox")||"").trim().split(/[\\s,]+/).map(Number);
+ const pageNumbers=(root.getAttribute("viewBox")||"").trim().split(/[\s,]+/).map(Number);
  const page=pageNumbers.length===4&&pageNumbers.every(Number.isFinite)
   ?{x:pageNumbers[0],y:pageNumbers[1],width:pageNumbers[2],height:pageNumbers[3]}
   :{x:0,y:0,width:parseFloat(root.getAttribute("width"))||1280,height:parseFloat(root.getAttribute("height"))||720};
  for(const rect of [...nativeRoot.querySelectorAll("rect")]){
-  const fill=(rect.getAttribute("fill")||((rect.getAttribute("style")||"").match(/fill:\\s*([^;]+)/)||[])[1]||"").replace(/\\s+/g,"").toLowerCase();
+  const fill=(rect.getAttribute("fill")||((rect.getAttribute("style")||"").match(/fill:\s*([^;]+)/)||[])[1]||"").replace(/\s+/g,"").toLowerCase();
   if(!["#fff","#ffffff","white","rgb(255,255,255)"].includes(fill))continue;
   const x=Number(rect.getAttribute("x"))||0,y=Number(rect.getAttribute("y"))||0;
   const width=Number(rect.getAttribute("width")),height=Number(rect.getAttribute("height"));
