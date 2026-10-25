@@ -87,11 +87,11 @@ function svgImport(xml,name){
   if(node.localName==="defs"||node.localName==="clipPath")return;
   if(node.localName==="g"){for(const child of node.children)visit(child,[...parents,node]);return;}
   if(!allowed.includes(node.localName))return;
+  // Page-sized white export backgrounds do not belong to an intersection.
+  if(isWhitePageBackground(node,page))return;
   const k=category(node);count[k]=(count[k]||0)+1;let dest=el(k);
   for(const p of parents){const g=document.createElementNS(ns,"g");for(const a of p.attributes)if(["transform","opacity","clip-path"].includes(a.name))g.setAttribute(a.name,a.value);dest.append(g);dest=g;}
-  const imported=document.importNode(node,true);
-  if(isWhitePageBackground(node,page))imported.setAttribute("data-semafory-crop-ignore","1");
-  dest.append(imported);
+  dest.append(document.importNode(node,true));
  }
  for(const child of root.children)visit(child,[]);
  // General rule for every intersection: trim unused SVG page area.
