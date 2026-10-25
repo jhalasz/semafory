@@ -3,7 +3,7 @@ import {createSignalController} from "./signal-controller.js?v=2.4.3";
 import {projectStore} from "./project-store.js?v=1.7";
 const ns="http://www.w3.org/2000/svg",svg=document.getElementById("scene"),$=id=>document.getElementById(id);
 const map=$("map"),photoMap=$("photo-map"),markings=$("markings"),carsLayer=$("vehicles"),lights=$("lights");
-const APP_VERSION="2.6.3";
+const APP_VERSION="2.6.4";
 const FIXED_DT=0.01;let accumulator=0,dayElapsed=0,spawnBudget=0;let collisionReport=null,selectedCarId=null;let signalsEnabled=false,collisionLocked=false,tracks=[],cars=[],passed=0,routeStats=new Map(),running=false,clock=0,spawnClock=0,last=0,phase=0,nextId=1,signals=[],controller=null,signalLocations=[];let activeProject=null,activeGameConfig={},projectCatalog=[];
 function svgEl(name,attrs={}){const e=document.createElementNS(ns,name);for(const [k,v]of Object.entries(attrs))e.setAttribute(k,String(v));return e;}
 function category(el){const style=el.getAttribute("style")||"";const stroke=(el.getAttribute("stroke")||(style.match(/stroke:\s*([^;]+)/)||[])[1]||"").toLowerCase(),fill=(el.getAttribute("fill")||(style.match(/fill:\s*([^;]+)/)||[])[1]||"").toLowerCase();const c=stroke&&stroke!=="none"?stroke:fill;if(["#fff","#ffffff"].includes(c))return"markings";if(["#61cbf4","#37b5ed"].includes(c))return"lane";if(["#ffc000","#f59e0b"].includes(c))return"route";if(["#7030a0","#a855f7"].includes(c))return"boundary";if(["#00b050","#22c55e"].includes(c)||stroke==="#042433"&&fill==="#00b050")return"signal";return"map";}
@@ -119,16 +119,61 @@ function readSvg(xml){
  }
  // Hide configuration markup; movement remains aligned in the same coordinates.
  for(const k of ["lane","route","boundary","signal"])for(const n of parts[k])n.setAttribute("visibility","hidden");
- try{
-  // Use the actual photograph bounds, not the wide PowerPoint slide.
-  // Keep the whole background visible and preserve its true aspect ratio.
-  const b=photoMap.children.length?photoMap.getBBox():map.getBBox();
-  if(b.width>0&&b.height>0){
-    svg.setAttribute("viewBox",[b.x,b.y,b.width,b.height].join(" "));
-    svg.style.aspectRatio=b.width+"/"+b.height;
-    svg.parentElement.style.setProperty("--map-aspect",b.width+"/"+b.height);
+ // Use exactly the Builder's crop algorithm on the imported SVG layers.
+ // Crucially, the photo's bounds alone are NOT the Builder's viewport.
+ // This measurement layer is temporary and does not affect game rendering.
+ const measuring=svgEl("g",{visibility:"hidden","pointer-events":"none"});
+ svg.append(measuring);
+ const cropGroups=new Map();
+ const cropCategories=["photo","beautified","markings","lanes","routes","entry","signals","other"];
+ for(const name of cropCategories){const g=svgEl("g");measuring.append(g);cropGroups.set(name,g);}
+ function cropCategory(node){
+  const kind=category(node);
+  return {lane:"lanes",route:"routes",boundary:"entry",signal:"signals",markings:"markings"}[kind]||"photo";
+ }
+ function whitePageRect(node){
+  if(node.localName!=="rect")return false;
+  const fill=(node.getAttribute("fill")||((node.getAttribute("style")||"").match(/fill:\s*([^;]+)/)||[])[1]||"").replace(/\s+/g,"").toLowerCase();
+  if(!["#fff","#ffffff","white","rgb(255,255,255)"].includes(fill))return false;
+  const x=Number(node.getAttribute("x"))||0,y=Number(node.getAttribute("y"))||0;
+  const w=Number(node.getAttribute("width")),h=Number(node.getAttribute("height"));
+  const tol=Math.max(page.width,page.height)*.002;
+  return w>0&&h>0&&Math.abs(x-page.x)<=tol&&Math.abs(y-page.y)<=tol&&
+   Math.abs(w-page.width)<=tol&&Math.abs(h-page.height)<=tol;
+ }
+ function measureNode(node,parents){
+  if(node.localName==="defs"||node.localName==="clipPath")return;
+  if(node.localName==="g"){for(const c of node.children)measureNode(c,[...parents,node]);return;}
+  if(!["path","image","rect","circle","ellipse","line","polyline","polygon","use","text"].includes(node.localName)||whitePageRect(node))return;
+  let dest=cropGroups.get(cropCategory(node));
+  for(const parent of parents){
+   const group=svgEl("g");
+   for(const a of parent.attributes)if(["transform","opacity","clip-path"].includes(a.name))group.setAttribute(a.name,a.value);
+   dest.append(group);dest=group;
   }
-}catch{}
+  dest.append(document.importNode(node,true));
+ }
+ try{
+  for(const node of root.children)measureNode(node,[]);
+  const boxes=[];
+  for(const group of cropGroups.values()){
+   if(!group.childElementCount)continue;
+   const b=group.getBBox();
+   if(b.width>0&&b.height>0&&[b.x,b.y,b.width,b.height].every(Number.isFinite))boxes.push(b);
+  }
+  if(boxes.length){
+   const minX=Math.min(...boxes.map(b=>b.x)),minY=Math.min(...boxes.map(b=>b.y));
+   const maxX=Math.max(...boxes.map(b=>b.x+b.width)),maxY=Math.max(...boxes.map(b=>b.y+b.height));
+   const w=maxX-minX,h=maxY-minY,pad=Math.max(w,h)*.02;
+   if(w>0&&h>0){
+    const box=[minX-pad,minY-pad,w+2*pad,h+2*pad];
+    svg.setAttribute("viewBox",box.join(" "));
+    svg.style.aspectRatio=box[2]+"/"+box[3];
+    svg.parentElement.style.setProperty("--map-aspect",box[2]+"/"+box[3]);
+   }
+  }
+ }catch(error){console.warn("Builder-compatible SVG crop failed",error);}
+ finally{measuring.remove();}
  return parts;
 }
 function samplePath(el,reverse=false){
