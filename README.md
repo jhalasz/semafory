@@ -1,18 +1,29 @@
-# Semafory — Intersection Builder
+# Semafory
 
-Webový projekt pro přípravu silničních křižovatek a budoucí univerzální dopravní simulaci.
+Webová aplikace pro přípravu křižovatek a experimentální simulaci dopravního provozu.
 
-## Zásady
-- Dopravní pravidla jsou nezávislá na křižovatkách i rendereru.
-- Simulační logika je nezávislá na křižovatkách i rendereru.
-- Křižovatky obsahují data, nikoli vlastní dopravní logiku.
-- Fotomapa a vektorové vrstvy používají společné souřadnice; zkrášlení nesmí měnit geometrii.
-- Skutečné vodorovné značení je bílé a oddělené od fakticky používaných, nevyznačených pruhů.
+## Dvě oddělené části projektu
 
-## Aktuální stav
-První kontrolní prohlížeč vrstev: import PNG/JPEG/WebP fotomapy, zapínání/vypínání vrstev, průhlednost a mobilní rozhraní.
+| Část | Aktuální verze | Dokumentace | Aplikace |
+| --- | --- | --- | --- |
+| Intersection Builder | **2.6.3** | [BUILDER.md](BUILDER.md) | [Otevřít Builder](https://jhalasz.github.io/semafory/) |
+| Veřejná hra | **2.5.46** | [HRA.md](HRA.md) | [Otevřít hru](https://jhalasz.github.io/semafory/hra.html) |
 
-**Zatím neumí** import PowerPointu, kreslení objektů, ukládání, vytváření upravené fotomapy ani simulaci dopravy.
+**Builder** připravuje a ukládá projekty křižovatek (SVG, vrstvy, návaznosti a nastavení). **Hra** vykonává dopravní simulaci; v aktuální veřejné verzi používá zveřejněný Massag 4. Číslování verzí je oddělené.
+
+## Architektonické zásady
+
+- Dopravní předpisy, pohyb a rozhodování vozidel patří do univerzálního jádra, ne do dat jedné křižovatky.
+- Každá křižovatka je samostatný datový projekt; nové projekty nesmějí přepsat předchozí konfigurace.
+- Fotomapa a vektorové prvky používají společné souřadnice; změna vzhledu nebo zoomu nesmí měnit geometrii.
+- Bílé reálné vodorovné značení je oddělené od logických, nemusících být nakreslených pruhů.
+- Cílově hra umožní volbu křižovatky a později jejich přiřazování levelům; tato funkce není ve veřejné hře 2.5.46 implementována.
 
 ## Publikování
-GitHub Pages: Settings → Pages → Deploy from a branch → main / (root).
+
+Statické stránky GitHub Pages: `main` / kořen repozitáře. Změny v Builderu se nepromítají automaticky do verze nebo nastavení veřejné hry.
+
+## Dokumentace
+
+- [BUILDER.md](BUILDER.md) – import SVG, projekty, bezpečnost změn, vrstvy, zoom, historie verzí.
+- [HRA.md](HRA.md) – ovládání simulace, semafory, statistika, model a plánované funkce.
