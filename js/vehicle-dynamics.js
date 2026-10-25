@@ -3,8 +3,8 @@
 // 50 km/h = 111.11 units/s, Vehicle sprite and collision dimensions are 80% of the previous prototype scale.
 // No assumptions about Massag geometry, traffic signals or intersection topology.
 export const VEHICLE_TYPES=Object.freeze({
- car:Object.freeze({length:28.8,width:11.52,cruise:111.11,maxAcceleration:16,comfortableBrake:24,emergencyBrake:48,reaction:0.75,minimumGap:12}),
- truck:Object.freeze({length:51.2,width:16,cruise:88.89,maxAcceleration:9.6,comfortableBrake:18,emergencyBrake:40,reaction:1.05,minimumGap:16})
+ car:Object.freeze({length:22.4,width:9,cruise:111.11,maxAcceleration:16,comfortableBrake:24,emergencyBrake:48,reaction:0.75,minimumGap:12}),
+ truck:Object.freeze({length:40,width:13,cruise:88.89,maxAcceleration:9.6,comfortableBrake:18,emergencyBrake:40,reaction:1.05,minimumGap:16})
 });
 const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
 export function desiredGap(vehicle,leader){
