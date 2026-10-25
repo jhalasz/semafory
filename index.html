@@ -3,12 +3,12 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Semafory – Intersection Builder 2.6.2</title>
+  <title>Semafory – Intersection Builder 2.6.3</title>
   <link rel="stylesheet" href="./css/style.css">
-  <script type="module" src="./js/app.js?v=2.6.2"></script>
+  <script type="module" src="./js/app.js?v=2.6.3"></script>
 </head>
 <body>
-  <header><h1>Semafory <small>Intersection Builder 2.6.2</small></h1></header>
+  <header><h1>Semafory <small>Intersection Builder 2.6.3</small></h1></header>
   <main>
     <aside class="panel">
       <h2>Veřejná hra</h2><p class="help">Návštěvníci používají samostatnou stránku bez editoru, založenou na zveřejněném projektu Massag 4.</p><p><a href="./hra.html" target="_blank" rel="noopener">Otevřít veřejnou hru ↗</a></p><h2>Projekty křižovatek</h2><p class="help">Každá křižovatka se ukládá samostatně. Nový projekt ani import nepřepíší Massag.</p><button type="button" id="project-new">Nová prázdná křižovatka</button><button type="button" id="project-copy">Uložit jako novou křižovatku (kopie)</button><label for="project-name">Název projektu</label><input id="project-name" type="text" placeholder="Např. Massag"><button type="button" id="project-save">Uložit v prohlížeči</button><button type="button" id="project-export">Export celého projektu</button><label for="project-list">Otevřít uložený projekt</label><select id="project-list"><option value="">Vyber projekt…</option></select><button type="button" id="project-open">Otevřít vybraný projekt</button><label for="project-import">Import projektu ze souboru</label><input id="project-import" type="file" accept=".json,.semafory"><p id="project-status" class="help" role="status">Místní ukládání je automatické. Zápis na GitHub vyžaduje autorizaci.</p><h2>Podklady</h2>
@@ -23,7 +23,7 @@
       <p class="help">Podklad a všechny vektorové vrstvy sdílejí stejný souřadnicový systém. SVG z PowerPointu se načte do barevných vrstev. Klikni na číslo bodu na mapě nebo jeho položku v seznamu; vybrané místo se přiblíží. Návrhy spojů potvrď nebo odmítni. Zelené spoje jsou potvrzené, oranžové návrhy, žluté nejasné a červené bez kandidáta. Původní křivky se nemění.</p>
     </aside>
     <section class="panel workspace">
-      <div class="workspace-head"><h2>Náhled křižovatky</h2><span id="status">Čeká na podklad</span></div>
+      <div class="workspace-head"><h2>Náhled křižovatky</h2><div class="map-zoom-controls"><label for="map-zoom">Přiblížení</label><input id="map-zoom" type="range" min="100" max="800" step="10" value="100" aria-label="Přiblížení mapy"><output id="map-zoom-label" for="map-zoom">100 %</output><button id="map-zoom-reset" type="button" title="Zobrazit celou mapu">100 %</button></div><span id="status">Čeká na podklad</span></div>
       <div class="viewport">
         <svg id="scene" viewBox="0 0 1000 700" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Pracovní plocha křižovatky">
           <g id="photo-layer"></g>
