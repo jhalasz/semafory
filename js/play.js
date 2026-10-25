@@ -1,9 +1,10 @@
 import {VEHICLE_TYPES,advanceVehicle} from "./vehicle-dynamics.js?v=2.5.31";
 import {createSignalController} from "./signal-controller.js?v=2.4.3";
+import {projectStore} from "./project-store.js?v=1.7";
 const ns="http://www.w3.org/2000/svg",svg=document.getElementById("scene"),$=id=>document.getElementById(id);
 const map=$("map"),photoMap=$("photo-map"),markings=$("markings"),carsLayer=$("vehicles"),lights=$("lights");
-const APP_VERSION="2.5.46";
-const FIXED_DT=0.01;let accumulator=0,dayElapsed=0,spawnBudget=0;let collisionReport=null,selectedCarId=null;let signalsEnabled=false,collisionLocked=false,tracks=[],cars=[],passed=0,routeStats=new Map(),running=false,clock=0,spawnClock=0,last=0,phase=0,nextId=1,signals=[],controller=null,signalLocations=[];
+const APP_VERSION="2.6";
+const FIXED_DT=0.01;let accumulator=0,dayElapsed=0,spawnBudget=0;let collisionReport=null,selectedCarId=null;let signalsEnabled=false,collisionLocked=false,tracks=[],cars=[],passed=0,routeStats=new Map(),running=false,clock=0,spawnClock=0,last=0,phase=0,nextId=1,signals=[],controller=null,signalLocations=[];let activeProject=null,activeGameConfig={},projectCatalog=[];
 function svgEl(name,attrs={}){const e=document.createElementNS(ns,name);for(const [k,v]of Object.entries(attrs))e.setAttribute(k,String(v));return e;}
 function category(el){const style=el.getAttribute("style")||"";const stroke=(el.getAttribute("stroke")||(style.match(/stroke:\s*([^;]+)/)||[])[1]||"").toLowerCase(),fill=(el.getAttribute("fill")||(style.match(/fill:\s*([^;]+)/)||[])[1]||"").toLowerCase();const c=stroke&&stroke!=="none"?stroke:fill;if(["#fff","#ffffff"].includes(c))return"markings";if(["#61cbf4","#37b5ed"].includes(c))return"lane";if(["#ffc000","#f59e0b"].includes(c))return"route";if(["#7030a0","#a855f7"].includes(c))return"boundary";if(["#00b050","#22c55e"].includes(c)||stroke==="#042433"&&fill==="#00b050")return"signal";return"map";}
 function readSvg(xml){
@@ -195,21 +196,21 @@ function joinPointsSmoothly(previous,next){
 }
 function makeTrack(network,movement){
  const combined=[];let approach=0,exitStart=0;
+ const shared=(activeGameConfig.sharedApproaches||[]).find(x=>x?.movement===movement.id&&(!x.branchLane||x.branchLane===movement.entryLane))||null;
  for(const id of [movement.entryLane,movement.id,movement.exitLane]){
   let points=network.segment(id,id===movement.entryLane);
   if(!points)return null;
-  // The two Opavska incoming lanes share one approach until the
-  // physical fork. Preserve both original authored downstream paths.
-  if(movement.id==="T03"&&id===movement.entryLane){
-   const common=network.segment("P01",true);
+  // Shared physical approaches are intersection data, not hard-coded game logic.
+  if(shared&&id===movement.entryLane&&shared.commonLane){
+   const common=network.segment(shared.commonLane,true);
    if(common){
-    const fork=points[0];
-    let nearest=0,best=Infinity;
+    const fork=points[0];let nearest=0,best=Infinity;
     for(let j=0;j<common.length;j++){
      const d=Math.hypot(common[j].x-fork.x,common[j].y-fork.y);
      if(d<best){best=d;nearest=j;}
     }
-    if(best<45&&nearest>3){
+    const limit=Number(shared.maxJoinDistance)||45;
+    if(best<limit&&nearest>3){
      const prefix=common.slice(0,nearest+1);
      const transition=joinPointsSmoothly(prefix,points);
      if(transition)points=prefix.concat(transition);
@@ -217,14 +218,18 @@ function makeTrack(network,movement){
    }
   }
   if(combined.length&&Math.hypot(combined.at(-1).x-points[0].x,combined.at(-1).y-points[0].y)>50)return null;
-  if(id===movement.id)approach=combined.length?combined.reduce((acc,p,i,a)=>i?acc+Math.hypot(p.x-a[i-1].x,p.y-a[i-1].y):0,0):0;
-  if(id===movement.exitLane)exitStart=combined.length?combined.reduce((acc,p,i,a)=>i?acc+Math.hypot(p.x-a[i-1].x,p.y-a[i-1].y):0,0):0;
+  if(id===movement.id)approach=combined.length?combined.reduce((acc,p,i,x)=>i?acc+Math.hypot(p.x-x[i-1].x,p.y-x[i-1].y):0,0):0;
+  if(id===movement.exitLane)exitStart=combined.length?combined.reduce((acc,p,i,x)=>i?acc+Math.hypot(p.x-x[i-1].x,p.y-x[i-1].y):0,0):0;
   const joining=combined.length?joinPointsSmoothly(combined,points):points;
   if(!joining)return null;
   combined.push(...joining);
  }
  const cumulative=[0];for(let i=1;i<combined.length;i++)cumulative.push(cumulative.at(-1)+Math.hypot(combined[i].x-combined[i-1].x,combined[i].y-combined[i-1].y));
- return{id:movement.id,roadPriority:(["P03","P04"].includes(movement.entryLane)?"main":"minor"),entryLane:movement.id==="T03"?"P01":movement.entryLane,exitLane:movement.exitLane,entryEnd:approach,exitStart,signal:movement.signal,points:combined,dist:cumulative,length:cumulative.at(-1),stopAt:approach-12};
+ const physicalEntryLane=shared?.commonLane||movement.entryLane;
+ const roadPriority=activeGameConfig.roadPriorityByMovement?.[movement.id]||
+  activeGameConfig.roadPriorityByLane?.[physicalEntryLane]||
+  activeGameConfig.roadPriorityByLane?.[movement.entryLane]||"equal";
+ return{id:movement.id,roadPriority,entryLane:physicalEntryLane,authoredEntryLane:movement.entryLane,exitLane:movement.exitLane,entryEnd:approach,exitStart,signal:movement.signal||null,points:combined,dist:cumulative,length:cumulative.at(-1),stopAt:approach-12};
 }
 function position(t,s){
  s=Math.max(0,Math.min(t.length,s));let lo=0,hi=t.dist.length-1;while(lo+1<hi){const mid=(lo+hi)>>1;if(t.dist[mid]<s)lo=mid;else hi=mid;}const a=t.points[lo],b=t.points[hi],f=(s-t.dist[lo])/(t.dist[hi]-t.dist[lo]||1);return{x:a.x+(b.x-a.x)*f,y:a.y+(b.y-a.y)*f,angle:Math.atan2(b.y-a.y,b.x-a.x)*180/Math.PI};
@@ -516,12 +521,9 @@ function exportDiagnostics(){
  document.body.append(link);link.click();link.remove();
  setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
-// Hourly cordon OD movements for profiles {1,2}<->{4,5}, 7:00–17:00.
-// All 10 measured values are a RELATIVE temporal shape, not absolute
-// Massag traffic counts. Outside that window the curve is an estimate.
-const CORDON_HOURLY=Object.freeze([187,163,151,128,113,151,152,230,234,183]);
-const CORDON_AVG=CORDON_HOURLY.reduce((a,b)=>a+b,0)/CORDON_HOURLY.length;
-// Five real minutes advance the daily clock by one hour: 24h = 120 minutes.
+// The daily traffic curve belongs to the selected intersection. Projects
+// without calibrated traffic data use a neutral flat profile.
+const DEFAULT_DAILY_PROFILE=Object.freeze(Array.from({length:24},()=>1));
 const DAY_HOURS=24,REAL_DAY_SECONDS=7200,DAY_ACCELERATION=DAY_HOURS*3600/REAL_DAY_SECONDS;
 function startingHour(){
  const [h,m]=($("start-time")?.value||"07:00").split(":").map(Number);
@@ -531,23 +533,24 @@ function dayHour(){
  return (startingHour()+dayElapsed*DAY_ACCELERATION/3600)%24;
 }
 function trafficProfile(hour){
- // Empirical measured 07–17; off-period coefficients intentionally
- // estimated (no claim of having surveyed evening/night Massag traffic).
- const shape=[.22,.14,.10,.09,.12,.23,.55,...CORDON_HOURLY.map(n=>n/CORDON_AVG),.68,.57,.46,.37,.32,.27,.24];
+ const configured=activeGameConfig.dailyProfile;
+ const shape=Array.isArray(configured)&&configured.length===24?configured:DEFAULT_DAILY_PROFILE;
  const i=Math.floor(hour)%24,f=hour-i;
- return shape[i]*(1-f)+shape[(i+1)%24]*f;
+ const first=Number(shape[i]),second=Number(shape[(i+1)%24]);
+ const x=Number.isFinite(first)?first:1,y=Number.isFinite(second)?second:1;
+ return x*(1-f)+y*f;
 }
 function updateDayClock(){
  const h=dayHour(),hours=Math.floor(h),minutes=Math.floor((h-hours)*60);
  const el=$("day-time");if(el)el.textContent=String(hours).padStart(2,"0")+":"+String(minutes).padStart(2,"0");
  const mul=$("current-profile");if(mul)mul.textContent=trafficProfile(h).toFixed(2)+"×";
 }
-const TRAFFIC_SURVEY_MOVEMENTS=Object.freeze({T01:2356,T02:2077,T03:1323,T04:1767,T05:779,T06:758});
 function sampleTrafficMovement(options=tracks){
- const total=options.reduce((sum,t)=>sum+(TRAFFIC_SURVEY_MOVEMENTS[t.id]||0),0);
+ const weights=activeGameConfig.trafficWeights||{};
+ const total=options.reduce((sum,t)=>sum+Math.max(0,Number(weights[t.id])||0),0);
  if(total<=0)return options[Math.floor(Math.random()*options.length)];
  let draw=Math.random()*total;
- for(const track of options){draw-=TRAFFIC_SURVEY_MOVEMENTS[track.id]||0;if(draw<0)return track;}
+ for(const track of options){draw-=Math.max(0,Number(weights[track.id])||0);if(draw<0)return track;}
  return options[options.length-1];
 }
 function spawn(){
@@ -556,7 +559,7 @@ function spawn(){
  const available=tracks.filter(t=>!cars.some(c=>c.track.entryLane===t.entryLane&&c.s-c.length/2<65));
  if(!available.length)return false;
  const t=sampleTrafficMovement(available);
- const truck=Math.random()<.05,spec=truck?VEHICLE_TYPES.truck:VEHICLE_TYPES.car;const g=svgEl("g"),body=svgEl("rect",{x:-spec.length/2,y:-spec.width/2,width:spec.length,height:spec.width,rx:2,fill:truck?"#f0c673":["#fff5bf","#e14e5a","#61b9ef","#9ee08e"][Math.floor(Math.random()*4)],stroke:"#172536","stroke-width":1.5});
+ const truck=Math.random()<Math.max(0,Math.min(1,Number(activeGameConfig.truckShare??.05))),spec=truck?VEHICLE_TYPES.truck:VEHICLE_TYPES.car;const g=svgEl("g"),body=svgEl("rect",{x:-spec.length/2,y:-spec.width/2,width:spec.length,height:spec.width,rx:2,fill:truck?"#f0c673":["#fff5bf","#e14e5a","#61b9ef","#9ee08e"][Math.floor(Math.random()*4)],stroke:"#172536","stroke-width":1.5});
  g.append(body);g.append(svgEl("rect",{x:-spec.length/2-6,y:-spec.width/2-8,width:spec.length+12,height:spec.width+16,fill:"transparent","pointer-events":"all"}));carsLayer.append(g);const car={id:nextId++,track:t,s:0,v:spec.cruise,length:spec.length,spec,el:g,
   enteredAt:clock,history:[],lastTelemetryTick:-1,lastTelemetryState:""};
  car.el.style.cursor="pointer";car.el.addEventListener("click",e=>{e.stopPropagation();selectedCarId=car.id;updateInspector();});
@@ -607,13 +610,25 @@ let normalController=null,unrestrictedController=null;
 function experimentalMode(){return !!$("unrestricted")?.checked;}
 function activateController(){
  controller=experimentalMode()?unrestrictedController:normalController;
- controller.reset();controller.setManual(experimentalMode()||$("manual").checked);
- $("manual").disabled=experimentalMode();
- freeSignals=signalsEnabled?new Set(freeTraffic.freeSignals||[]):new Set(tracks.map(t=>t.signal));
+ if(controller){controller.reset();controller.setManual(experimentalMode()||$("manual").checked);}
+ $("manual").disabled=experimentalMode()||!controller;
+ freeSignals=signalsEnabled?new Set(freeTraffic.freeSignals||[]):new Set(tracks.map(t=>t.signal).filter(Boolean));
+}
+function buildSignalPanel(){
+ const panel=$("signal-panel");if(!panel)return;
+ panel.replaceChildren();
+ const excluded=new Set(freeTraffic.freeSignals||[]);
+ for(const id of signals.filter(id=>!excluded.has(id))){
+  const button=document.createElement("button");
+  button.type="button";button.dataset.signal=id;
+  button.dataset.name=activeGameConfig.signalLabels?.[id]||id;
+  button.onclick=()=>requestSignal(id);
+  panel.append(button);
+ }
 }
 function renderSignalPanel(){
  const panel=$("signal-panel");if(!panel)return;
- panel.hidden=!signalsEnabled;
+ panel.hidden=!signalsEnabled||!panel.children.length;
  for(const button of panel.querySelectorAll("button[data-signal]")){
   const state=controller?.state(button.dataset.signal)||"red";
   button.textContent=button.dataset.name+" · "+(state==="green"?"ZELENÁ":state==="red"?"ČERVENÁ":state.toUpperCase());
@@ -654,7 +669,7 @@ function requestSignal(id){
  const group=(activeSignalPlan?.linkedSignals||[]).find(g=>g.includes(id))||[id];
  $("state").textContent=ok?"Požadavek: zelená pro "+group.join(" + ")+"; probíhá bezpečné přepnutí.":"Skupina "+group.join(" + ")+" má zelenou nebo je právě aktivní.";
 }
-function lightIsGreen(signal){return freeSignals.has(signal)||controller?.state(signal)==="green";}
+function lightIsGreen(signal){return !signal||freeSignals.has(signal)||controller?.state(signal)==="green";}
 function updateInspector(){
  const panel=$("vehicle-inspector"),car=cars.find(c=>c.id===selectedCarId);
  const selector=$("inspect-select");
@@ -663,7 +678,7 @@ function updateInspector(){
  if(!car){panel.hidden=true;return;}
  panel.hidden=false;selector.value=String(car.id);
  const d=car.liveInspection||{},block=d.blocker||null,active=d.activeObstacle||null;
- $("inspect-title").textContent="Vozidlo "+car.id+" · "+car.track.id+" · "+(car.track.roadPriority==="main"?"hlavní":"vedlejší");
+ $("inspect-title").textContent="Vozidlo "+car.id+" · "+car.track.id+" · "+(car.track.roadPriority==="main"?"hlavní":car.track.roadPriority==="minor"?"vedlejší":"rovnocenná");
  $("inspect-info").textContent="Čas "+formatTime(clock)+" | rychlost "+car.v.toFixed(2)+" | poloha "+car.s.toFixed(2)+" / "+car.track.length.toFixed(1)+" | rozhodovací hranice "+car.track.stopAt.toFixed(2);
  $("inspect-status").textContent=active?"Aktuálně omezuje: "+active.rule+(active.id?" · auto "+active.id+" ("+active.route+")":""):"Aktuálně bez omezení";
  $("inspect-detail").textContent=(d.gateStatus||"Zatím bez výpočtu přednosti")+
@@ -681,7 +696,8 @@ function animate(now){
  // A multiplier of 1× uses a calibrated visual arrival rate (~1.3 veh/s
  // near the reference hour), not a literal 24h volume in 12 minutes.
  // In 2.5.42 intensity 1.0 equals intensity 0.5 in 2.5.41.
- const currentRate=0.65*trafficProfile(dayHour())*Number($("rate").value);
+ const baseRate=Math.max(.05,Number(activeGameConfig.baseSpawnRate)||.65);
+ const currentRate=baseRate*trafficProfile(dayHour())*Number($("rate").value);
  spawnBudget=Math.min(6,spawnBudget+dt*currentRate);
  while(spawnBudget>=1){if(!spawn())break;spawnBudget-=1;}
  // Take one consistent snapshot so all vehicles react to the same traffic state.
@@ -694,41 +710,23 @@ function animate(now){
    if(other.id===car.id)continue;
    let delta=Infinity;
    if(other.track===car.track&&other.s>car.s)delta=other.s-car.s;
-   // Common incoming approach: use road position rather than the end of
-   // a movement's authored entry segment as the physical fork.
+   // Vehicles sharing one physical entry stream form a FIFO queue while
+   // their live geometry is still aligned. No road ID or fixed fork point is
+   // embedded in the universal engine.
    if(car.track.entryLane===other.track.entryLane){
     const p=position(car.track,car.s),q=position(other.track,other.s);
-    const forkX=435; // physical beginning of the second Opavska lane
-    const shared=car.track.entryLane==="P01";
-    // Other entry lanes (including Dukelska P04) also carry multiple
-    // movements. Preserve one FIFO queue until the authored lane ends.
-    if(!shared){
-     // A single entry lane is a FIFO resource up to the physical fork.
-     // Creation order is the lane order: differing movement progress after
-     // a stop must never let the following car jump ahead.
-     const fork=Math.min(car.track.entryEnd,other.track.entryEnd);
-     const followerStillShared=car.s-car.length/2<fork+car.length/2;
-     const leaderStillShared=other.s-other.length/2<fork+other.length/2;
-     if(other.id<car.id&&followerStillShared&&leaderStillShared){
-      delta=Math.min(delta,Math.max(0,other.s-car.s));
-     }
-    }
-    const longitudinal=q.x-p.x;
-    const lateral=Math.abs(q.y-p.y);
-    // Before the fork cars form one queue, irrespective of their turn.
-    // Beyond it, vehicles on divergent lanes no longer block one another.
-    if(shared&&p.x<forkX+car.length/2&&q.x<forkX+other.length/2&&
-       longitudinal>0&&lateral<34){
-     delta=Math.min(delta,longitudinal);
-    }
-    // Where lanes overlap at the fork, keep a spatial collision envelope.
-    if(shared&&p.x>forkX-45&&p.x<forkX+65&&
-       q.x>forkX-45&&q.x<forkX+65&&longitudinal>0){
-     // Exact oriented footprints avoid false conflicts between diverging
-     // vehicles whose centres are close but whose bodies do not overlap.
+    const angle=p.angle*Math.PI/180,otherAngle=q.angle*Math.PI/180;
+    const ux=Math.cos(angle),uy=Math.sin(angle),vx=-uy,vy=ux;
+    const dx=q.x-p.x,dy=q.y-p.y;
+    const forward=dx*ux+dy*uy,lateral=Math.abs(dx*vx+dy*vy);
+    const aligned=Math.cos(angle-otherAngle)>.72;
+    const laneWidth=(car.spec.width+other.spec.width)/2+8;
+    if(aligned&&forward>0&&forward<Math.max(135,car.v*3)&&lateral<laneWidth){
+     delta=Math.min(delta,forward);
      const clearance=footprintClearance(vehicleFootprint(car),vehicleFootprint(other));
-     if(clearance<Math.max(4,car.v*.65)){
-      if(!obstacle||clearance<obstacle.gap){obstacle={gap:clearance,v:other.v};if(inspect)obstacleSource={rule:"Geometrické následování ve společném příjezdu",id:other.id,route:other.track.id};}
+     if(clearance<Math.max(4,car.v*.65)&&(!obstacle||clearance<obstacle.gap)){
+      obstacle={gap:clearance,v:other.v};
+      if(inspect)obstacleSource={rule:"Geometrické následování ve společném příjezdu",id:other.id,route:other.track.id};
      }
     }
    }
@@ -844,54 +842,136 @@ function animate(now){
  }
  for(const c of cars){const rect=c.el.firstElementChild;rect.setAttribute("stroke",c.id===selectedCarId?"#ffff00":"#172536");rect.setAttribute("stroke-width",c.id===selectedCarId?"3.8":"1.5");}
  updateInspector();
- const stage=controller?.status();$("phase").textContent=signalsEnabled?(stage?(experimentalMode()?"TEST: nezávislé semafory · bez kontroly":"Semafory · fáze "+stage.stage+" · "+stage.mode):"Semafory"):"Bez semaforů · hlavní / vedlejší";$("elapsed").textContent=formatTime(clock);$("count").textContent=cars.length;$("passed").textContent=passed;
+ const stage=controller?.status();$("phase").textContent=signalsEnabled?(stage?(experimentalMode()?"TEST: nezávislé semafory · bez kontroly":"Semafory · fáze "+stage.stage+" · "+stage.mode):"Semafory"):"Bez semaforů · přednosti projektu";$("elapsed").textContent=formatTime(clock);$("count").textContent=cars.length;$("passed").textContent=passed;
  renderRouteStats();
  renderSignalLights();
  requestAnimationFrame(animate);
 }
-async function init(){
- const response=await fetch("./projects/massag-4.json",{cache:"no-store"});if(!response.ok)throw Error("Veřejný projekt není dostupný");
- const data=await response.json(),parts=readSvg(data.svg.content);
- const network=makeRoadNetwork(parts,data.directions);
+function clearProjectScene(){
+ running=false;
+ for(const car of cars)car.el?.remove();
+ cars=[];selectedCarId=null;tracks=[];signals=[];signalLocations=[];routeStats=new Map();
+ collisionLocked=false;collisionReport=null;clock=0;accumulator=0;dayElapsed=0;spawnBudget=0;spawnClock=0;passed=0;phase=0;nextId=1;
+ for(const id of ["defs","map","photo-map","markings","native-map","vehicles","lights"])$(id)?.replaceChildren();
+ signalVisuals.clear();priorityConflictCache.clear();innerWaitCache.clear();stagedTurnCache.clear();
+ normalController=null;unrestrictedController=null;controller=null;activeSignalPlan=null;freeSignals=new Set();yieldRules=[];freeTraffic={};
+ $("diagnostics").hidden=true;$("vehicle-inspector").hidden=true;
+}
+function fallbackSignalPlan(controlledSignals){
+ if(!controlledSignals.length)return null;
+ return {type:"generated-test",stages:controlledSignals.map(id=>({green:[id],greenSeconds:12})),yellowSeconds:3,allRedSeconds:2,redYellowSeconds:2,linkedSignals:[]};
+}
+function validSignalPlan(plan,known){
+ return !!plan&&Array.isArray(plan.stages)&&plan.stages.length>0&&plan.stages.every(stage=>Array.isArray(stage.green)&&stage.green.length&&stage.green.every(id=>known.includes(id)));
+}
+function gameConfigFor(data,source){
+ const byId=projectCatalog.find(p=>p.id&&p.id===data.id);
+ const byFile=source?.startsWith("github:")?projectCatalog.find(p=>"github:"+p.file===source):null;
+ return {...(byId?.game||byFile?.game||{}),...(data.game||{})};
+}
+async function loadIntersection(source,{initial=false}={}){
+ $("state").textContent="Načítám křižovatku…";
+ let data;
+ if(source.startsWith("local:")){
+  data=await projectStore.get(source.slice(6));
+  if(!data)throw Error("Místní projekt nebyl nalezen");
+ }else if(source.startsWith("github:")){
+  const file=source.slice(7);
+  if(!/^[-a-zA-Z0-9_/]+\.json$/.test(file)||file.includes(".."))throw Error("Neplatná cesta projektu");
+  const response=await fetch("./projects/"+file,{cache:"no-store"});
+  if(!response.ok)throw Error("Zveřejněný projekt není dostupný");
+  data=await response.json();
+ }else throw Error("Neplatný zdroj projektu");
+ if(!data?.svg?.content)throw Error("Projekt neobsahuje SVG");
+ clearProjectScene();activeProject=data;activeGameConfig=gameConfigFor(data,source);
+ const parts=readSvg(data.svg.content),network=makeRoadNetwork(parts,data.directions);
  tracks=(data.movements?.movements||[]).filter(m=>m.confirmed).map(m=>makeTrack(network,m)).filter(Boolean);
- signalLocations=locateSignals(parts);
+ if(!tracks.length)throw Error("Projekt nemá potvrzené průjezdy");
+ signals=[...new Set(tracks.map(t=>t.signal).filter(Boolean))];
+ freeTraffic={
+  freeSignals:activeGameConfig.freeSignals||[],
+  yieldRules:activeGameConfig.yieldRules||[],
+  ...(data.uncontrolledMovements||{})
+ };
+ yieldRules=freeTraffic.yieldRules||[];
+ freeSignals=new Set(tracks.map(t=>t.signal).filter(Boolean));
+ const controlled=signals.filter(id=>!(freeTraffic.freeSignals||[]).includes(id));
+ const sourcePlan=data.signalPlan||activeGameConfig.signalPlan||null;
+ const configured=sourcePlan?{...sourcePlan,linkedSignals:sourcePlan.linkedSignals||[]}:null;
+ activeSignalPlan=validSignalPlan(configured,signals)?configured:fallbackSignalPlan(controlled);
+ if(signals.length){
+  normalController=activeSignalPlan?createSignalController(activeSignalPlan):makeUnrestrictedController(signals);
+  unrestrictedController=makeUnrestrictedController(signals);
+ }
+ signalLocations=signals.length?locateSignals(parts):[];
  routeStats=new Map(tracks.map(t=>[t.id,0]));
-
-  signals=[...new Set(tracks.map(t=>t.signal))];if(!signals.length||!tracks.length)throw Error("Chybí potvrzené průjezdy nebo směry");
- freeTraffic=data.uncontrolledMovements||{};
-  freeSignals=new Set(tracks.map(t=>t.signal)); // Unsignalized mode by default
-  yieldRules=freeTraffic.yieldRules||[];
-  const plan={...data.signalPlan,linkedSignals:data.signalPlan?.linkedSignals||[]};
- activeSignalPlan=plan;
- if(!plan||plan.stages.some(stage=>stage.green.some(signal=>!signals.includes(signal))))throw Error("Chybí platný fázový plán projektu");
- normalController=createSignalController(plan);
- unrestrictedController=makeUnrestrictedController(signals);
- signalsEnabled=$("signals-enabled").checked;
- activateController();
- for(const btn of $("signal-panel").querySelectorAll("button[data-signal]"))btn.onclick=()=>requestSignal(btn.dataset.signal);
- $("manual").onchange=()=>{controller.setManual($("manual").checked);$("state").textContent=$("manual").checked?"Ruční řízení: klikni na semafor.":"Automatické řízení.";};
+ signalsEnabled=signals.length?$("signals-enabled").checked:false;
+ $("signals-enabled").disabled=!signals.length;
+ activateController();buildSignalPanel();
+ if(signals.some(id=>!signalLocations.some(loc=>loc.id===id)))throw Error("V SVG chybí pozice potvrzeného semaforu");
+ $("intersection-name").textContent=data.name||"Křižovatka";
+ document.title="Semafory – "+(data.name||"křižovatka")+" – 2.6";
+ localStorage.setItem("semafory-game-project",source);
+ const configNote=Object.keys(activeGameConfig).length?"konfigurace projektu":"neutrální testovací konfigurace";
+ $("state").textContent=(data.name||"Křižovatka")+" připravena · "+tracks.length+" průjezdů · "+configNote;
+ renderRouteStats();renderSignalLights();updateDayClock();
+ if(!initial)running=false;
+}
+async function listIntersections(){
+ const select=$("intersection");select.replaceChildren();projectCatalog=[];
+ try{
+  const response=await fetch("./projects/index.json",{cache:"no-store"});
+  if(response.ok){const index=await response.json();projectCatalog=Array.isArray(index.projects)?index.projects:[];}
+ }catch(e){console.warn("Seznam zveřejněných projektů není dostupný",e);}
+ const refs=[];
+ for(const p of projectCatalog){
+  if(!p?.file)continue;
+  const value="github:"+p.file;refs.push(value);
+  select.add(new Option((p.name||p.file)+" · GitHub",value));
+ }
+ try{
+  const local=await projectStore.list();
+  for(const p of local){
+   const value="local:"+p.id;refs.push(value);
+   select.add(new Option((p.name||"Křižovatka")+" · místní",value));
+  }
+ }catch(e){console.warn("Místní projekty nejsou dostupné",e);}
+ if(!refs.length){
+  const fallback="github:massag-4.json";refs.push(fallback);select.add(new Option("Massag 4 · GitHub",fallback));
+ }
+ const remembered=localStorage.getItem("semafory-game-project");
+ const defaultRef=refs.includes(remembered)?remembered:(refs.find(x=>x==="github:massag-4.json")||refs[0]);
+ select.value=defaultRef;return defaultRef;
+}
+function resetSimulation({start=true}={}){
+ for(const car of cars)car.el.remove();
+ cars=[];selectedCarId=null;clock=0;accumulator=0;dayElapsed=0;spawnBudget=0;collisionLocked=false;collisionReport=null;
+ $("diagnostics").hidden=true;phase=0;controller?.reset();passed=0;routeStats=new Map(tracks.map(t=>[t.id,0]));spawnClock=0;running=start;
+ $("state").textContent=start?"Simulace běží":"Simulace připravena";
+}
+async function init(){
+ $("intersection").onchange=async()=>{try{await loadIntersection($("intersection").value);}catch(err){$("state").textContent="Chyba: "+err.message;console.error(err);}};
+ $("manual").onchange=()=>{if(!controller)return;controller.setManual($("manual").checked);$("state").textContent=$("manual").checked?"Ruční řízení: klikni na semafor.":"Automatické řízení.";};
  $("unrestricted").onchange=()=>{
   activateController();
-  $("state").textContent=experimentalMode()?"TEST BEZ KONTROLY: každý semafor kliknutím červená/zelená; lze dát zelenou všem.":"Standardní bezpečné řízení obnoveno.";
+  $("state").textContent=experimentalMode()?"TEST BEZ KONTROLY: každý řízený semafor lze přepínat samostatně.":"Standardní bezpečné řízení obnoveno.";
   lights.replaceChildren();signalVisuals.clear();renderSignalLights();
  };
- if(signals.some(id=>!signalLocations.some(loc=>loc.id===id)))throw Error("V SVG chybí pozice potvrzeného semaforu");
- $("state").textContent=signalsEnabled?"TEST: tři nezávislé semafory; klikni na světla.":"Bez semaforů: hlavní Dukelská–Nová cesta · "+tracks.length+" průjezdů";
  $("signals-enabled").onchange=()=>{
-  signalsEnabled=$("signals-enabled").checked;accumulator=0;
-  activateController();
-  $("state").textContent=signalsEnabled?"Semafory zapnuté – konfigurace projektu":"Semafory vypnuté – přednost hlavní / vedlejší";
+  signalsEnabled=$("signals-enabled").checked&&signals.length>0;accumulator=0;activateController();
+  $("state").textContent=signalsEnabled?"Semafory zapnuté – konfigurace projektu":"Semafory vypnuté – přednosti podle konfigurace projektu";
   renderSignalLights();
  };
  $("start").onclick=()=>{if(collisionLocked){$("state").textContent="Po kolizi spusť novou simulaci.";return;}running=true;$("state").textContent="Simulace běží";};
  $("pause").onclick=()=>{running=false;$("state").textContent="Pozastaveno";};
+ $("reset").onclick=()=>resetSimulation({start:true});
  $("export-diagnostics").onclick=exportDiagnostics;
  $("inspect-toggle").onclick=()=>{if(selectedCarId!==null&&!$("vehicle-inspector").hidden){selectedCarId=null;updateInspector();return;}selectedCarId=(cars.find(c=>c.v<2)||cars[0])?.id??null;updateInspector();};
  $("inspect-select").onchange=()=>{selectedCarId=Number($("inspect-select").value);updateInspector();};
- $("reset").onclick=()=>{for(const c of cars)c.el.remove();cars=[];selectedCarId=null;clock=0;accumulator=0;dayElapsed=0;spawnBudget=0;collisionLocked=false;collisionReport=null;$("diagnostics").hidden=true;phase=0;controller.reset();passed=0;routeStats=new Map(tracks.map(t=>[t.id,0]));spawnClock=0;running=true;$("state").textContent="Simulace běží";};
  for(const id of ["speed","rate"])$(id).oninput=()=>$(id+"-value").textContent=$(id).value+"×";
  $("start-time").onchange=()=>{if(!running&&clock===0)updateDayClock();};
- updateDayClock();
+ const source=await listIntersections();
+ await loadIntersection(source,{initial:true});
  requestAnimationFrame(animate);
 }
 init().catch(err=>{$("state").textContent="Chyba: "+err.message;console.error(err);});
