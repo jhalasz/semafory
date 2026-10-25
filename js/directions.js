@@ -51,6 +51,7 @@ export function createDirectionEditor(svg,container){
    const dx=tangent.x,dy=tangent.y,mag=Math.hypot(dx,dy)||1;
    const ux=dx/mag,uy=dy/mag;
    const color=item.confirmed?"#22c55e":item.direction===0?"#eab308":"#60a5fa";
+   const sourceVisible=svg.querySelector(item.id[0]==="P"?"#lanes-layer":"#routes-layer").getAttribute("visibility")!=="hidden";
    if(selected===item.id){
     const elementMatrix=svg.getScreenCTM().inverse().multiply(item.el.getScreenCTM());
     const transform="matrix("+[elementMatrix.a,elementMatrix.b,elementMatrix.c,elementMatrix.d,elementMatrix.e,elementMatrix.f].join(" ")+")";
@@ -59,12 +60,14 @@ export function createDirectionEditor(svg,container){
     copy.setAttribute("stroke","#00ff88");copy.setAttribute("stroke-width","7");
     copy.setAttribute("fill","none");copy.setAttribute("opacity","0.9");
     copy.setAttribute("vector-effect","non-scaling-stroke");
+    copy.setAttribute("visibility",sourceVisible?"visible":"hidden");
+    copy.setAttribute("data-source-layer",item.id[0]==="P"?"lanes":"routes");
     layer.append(copy);
    }
-   const marker=shape("g",{cursor:"pointer",role:"button",tabindex:0,"aria-label":"Vybrat "+item.id},layer);
+   const marker=shape("g",{cursor:"pointer",role:"button",tabindex:0,"aria-label":"Vybrat "+item.id,visibility:sourceVisible?"visible":"hidden","data-source-layer":item.id[0]==="P"?"lanes":"routes"},layer);
    const p=shape("path",{d:"M "+(mid.x-ux*11)+" "+(mid.y-uy*11)+" L "+(mid.x+ux*11)+" "+(mid.y+uy*11)+" M "+(mid.x+ux*11)+" "+(mid.y+uy*11)+" L "+(mid.x+ux*4-uy*5)+" "+(mid.y+uy*4+ux*5)+" M "+(mid.x+ux*11)+" "+(mid.y+uy*11)+" L "+(mid.x+ux*4+uy*5)+" "+(mid.y+uy*4-ux*5),fill:"none",stroke:color,"stroke-width":selected===item.id?5:3,"vector-effect":"non-scaling-stroke"},marker);
    shape("circle",{cx:mid.x,cy:mid.y,r:16,fill:"transparent"},marker);
-   const badge=shape("g",{cursor:"pointer"},layer);
+   const badge=shape("g",{cursor:"pointer",visibility:sourceVisible?"visible":"hidden","data-source-layer":item.id[0]==="P"?"lanes":"routes"},layer);
    const bx=mid.x-uy*21,by=mid.y+ux*21;
    shape("line",{x1:mid.x,y1:mid.y,x2:bx,y2:by,stroke:color,"stroke-width":1.5,"stroke-dasharray":"3 3","pointer-events":"none"},badge);
    shape("circle",{cx:bx,cy:by,r:14,fill:"#172338",stroke:color,"stroke-width":selected===item.id?3:2},badge);
@@ -82,6 +85,13 @@ export function createDirectionEditor(svg,container){
   }
   document.getElementById("direction-report").textContent="Pruhy: "+lanes.length+" · trajektorie: "+routes.length+" · potvrzeno: "+all.filter(x=>x.confirmed).length+"/"+all.length+". Žlutá šipka znamená neurčený směr.";
  }
+ function syncVisibility(){
+  for(const node of layer.querySelectorAll("[data-source-layer]")){
+   const source=svg.querySelector("#"+node.getAttribute("data-source-layer")+"-layer");
+   node.setAttribute("visibility",source?.getAttribute("visibility")==="hidden"?"hidden":"visible");
+  }
+ }
+ svg.addEventListener("semafory:layer-visibility",syncVisibility);
  render();
- return {restore(saved){if(!saved||!Array.isArray(saved.items))return;for(const old of saved.items){const p=all.find(x=>x.id===old.id&&Math.hypot(x.start.x-old.start?.x,x.start.y-old.start?.y)<2&&Math.hypot(x.end.x-old.end?.x,x.end.y-old.end?.y)<2);if(!p)continue;p.direction=old.direction==="end-to-start"?-1:old.direction==="start-to-end"?1:0;p.confirmed=!!old.confirmed;}render();},export:()=>({format:"semafory-directions-1.0",items:all.map(p=>({id:p.id,type:p.id[0]==="P"?"lane":"route",direction:p.direction===-1?"end-to-start":p.direction===1?"start-to-end":"unknown",suggestedDirection:p.suggestedDirection===-1?"end-to-start":p.suggestedDirection===1?"start-to-end":"unknown",confidence:p.confidence,confirmed:p.confirmed,manuallyChanged:p.confirmed&&p.direction!==p.suggestedDirection,start:p.start,end:p.end}))}),dispose(){layer.replaceChildren();container.replaceChildren();}};
+ return {restore(saved){if(!saved||!Array.isArray(saved.items))return;for(const old of saved.items){const p=all.find(x=>x.id===old.id&&Math.hypot(x.start.x-old.start?.x,x.start.y-old.start?.y)<2&&Math.hypot(x.end.x-old.end?.x,x.end.y-old.end?.y)<2);if(!p)continue;p.direction=old.direction==="end-to-start"?-1:old.direction==="start-to-end"?1:0;p.confirmed=!!old.confirmed;}render();},export:()=>({format:"semafory-directions-1.0",items:all.map(p=>({id:p.id,type:p.id[0]==="P"?"lane":"route",direction:p.direction===-1?"end-to-start":p.direction===1?"start-to-end":"unknown",suggestedDirection:p.suggestedDirection===-1?"end-to-start":p.suggestedDirection===1?"start-to-end":"unknown",confidence:p.confidence,confirmed:p.confirmed,manuallyChanged:p.confirmed&&p.direction!==p.suggestedDirection,start:p.start,end:p.end}))}),dispose(){svg.removeEventListener("semafory:layer-visibility",syncVisibility);layer.replaceChildren();container.replaceChildren();}};
 }
