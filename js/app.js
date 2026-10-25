@@ -245,7 +245,7 @@ const projectNotice=document.getElementById("project-status");
 function showProjectStatus(message){projectNotice.textContent=message;}
 function snapshot(){
  if(!sourceSvg)return null;
- return {format:"semafory-project",version:1,id:projectId||crypto.randomUUID(),name:document.getElementById("project-name").value.trim()||status.textContent,updated:new Date().toISOString(),svg:{name:status.textContent,content:sourceSvg},directions:directions?.export()||null,connections:connections?.export()||[],controls:controls?.export()||null,movements:movements?.export()||null,conflicts:conflicts?.export()||null,driverRisk:driverRisk.export(),signalPlan,beautifiedMap,visibility:Object.fromEntries(keys.map(([k])=>[k,el(k).getAttribute("visibility")!=="hidden"]))};
+ return {format:"semafory-project",version:1,id:projectId||crypto.randomUUID(),name:document.getElementById("project-name").value.trim()||status.textContent,updated:new Date().toISOString(),svg:{name:status.textContent,content:sourceSvg},viewport:{viewBox:fullViewBox||scene.getAttribute("viewBox")},directions:directions?.export()||null,connections:connections?.export()||[],controls:controls?.export()||null,movements:movements?.export()||null,conflicts:conflicts?.export()||null,driverRisk:driverRisk.export(),signalPlan,beautifiedMap,visibility:Object.fromEntries(keys.map(([k])=>[k,el(k).getAttribute("visibility")!=="hidden"]))};
 }
 async function saveProject(){
  if(loading)return;
@@ -277,6 +277,10 @@ async function loadProject(data,{skipSave=false,copy=false}={}){
   projectId=copy?crypto.randomUUID():(data.id||crypto.randomUUID());signalPlan=data.signalPlan||null;
   document.getElementById("project-name").value=data.name||"";
   svgImport(data.svg.content,data.svg.name||data.name||"Projekt");
+  if(data.viewport?.viewBox&&data.viewport.viewBox.trim().split(/[\s,]+/).length===4){
+   fullViewBox=data.viewport.viewBox;
+   scene.setAttribute("viewBox",fullViewBox);
+  }
   directions?.restore(data.directions);
   connections?.restore(data.connections);
   controls?.restore(data.controls);
