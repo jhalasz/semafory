@@ -1,6 +1,6 @@
 # Semafory – Intersection Builder
 
-**Aktuální verze: 2.6.3** · [Otevřít Builder](https://jhalasz.github.io/semafory/)
+**Aktuální verze: 2.6.4** · [Otevřít Builder](https://jhalasz.github.io/semafory/)
 
 ## Účel
 
@@ -29,7 +29,7 @@ Import roztřídí prvky především podle barvy a typu SVG: fotomapa, značen�
 - Kolečko myši nad mapou mění přiblížení směrem k poloze ukazatele.
 - Posuvník **Přiblížení** nad mapou nastavuje přibližně 100–800 %. Tlačítko **100 %** vrátí celý pohled.
 - Panel **Zobrazit celou mapu** obnoví výchozí výřez. Výběr bodu návaznosti může mapu samostatně přiblížit.
-- Každou vrstvu lze zapnout/vypnout a nastavit její průhlednost.
+- Každou vrstvu lze zapnout/vypnout a nastavit její průhlednost. Skrytí logických pruhů skryje také jejich popisky P; skrytí trajektorií skryje popisky T a příslušné směrové šipky.
 - Přibližování mění pouze SVG `viewBox`, **nikoli souřadnice uložené geometrie**.
 
 ## Struktura zdrojů
@@ -51,5 +51,6 @@ Builder není plnohodnotný grafický editor PowerPointu: geometrie se primárn�
 - **2.6.1:** první pokus o automatický ořez výřezu; nepokrýval zobrazený bílý obdélník.
 - **2.6.2:** skutečné odstranění celostránkového bílého pozadí ze zobrazení při importu SVG.
 - **2.6.3:** kolečko myši, posuvník zoomu a reset na 100 %.
+- **2.6.4:** popisky a směrové šipky P/T respektují viditelnost svých zdrojových vrstev.
 
 > Verze Builderu a veřejné hry se vyvíjejí **nezávisle**. Aktuální veřejná hra není automaticky aktualizována při změně Builderu.
