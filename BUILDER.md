@@ -1,6 +1,6 @@
 # Semafory – Intersection Builder
 
-**Aktuální verze: 2.6.4** · [Otevřít Builder](https://jhalasz.github.io/semafory/)
+**Aktuální verze: 2.6.5** · [Otevřít Builder](https://jhalasz.github.io/semafory/)
 
 ## Účel
 
@@ -51,6 +51,10 @@ Builder není plnohodnotný grafický editor PowerPointu: geometrie se primárn�
 - **2.6.1:** první pokus o automatický ořez výřezu; nepokrýval zobrazený bílý obdélník.
 - **2.6.2:** skutečné odstranění celostránkového bílého pozadí ze zobrazení při importu SVG.
 - **2.6.3:** kolečko myši, posuvník zoomu a reset na 100 %.
-- **2.6.4:** popisky a směrové šipky P/T respektují viditelnost svých zdrojových vrstev.
+- **2.6.5:** popisky a směrové šipky P/T respektují viditelnost svých zdrojových vrstev.
 
 > Verze Builderu a veřejné hry se vyvíjejí **nezávisle**. Aktuální veřejná hra není automaticky aktualizována při změně Builderu.
+
+## 2.6.5 – Přenos výřezu
+
+Builder ukládá `viewport.viewBox` při exportu a obnovuje jej při otevření projektu. Tím může Player použít stejný výřez místo vlastního odhadu; již dříve exportované JSON tento údaj nemají a vyžadují nový export z Builderu.
