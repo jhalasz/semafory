@@ -121,7 +121,7 @@ function readSvg(xml){
    const clippedAncestor=[...function*(){for(let n=use.parentElement;n&&n!==root;n=n.parentElement)yield n;}()]
     .reverse().find(n=>n.hasAttribute("clip-path"));
    if(clippedAncestor){
-    const match=(clippedAncestor.getAttribute("clip-path")||"").match(/url\\(#([^)]*)\\)/);
+    const match=(clippedAncestor.getAttribute("clip-path")||"").match(/url\(#([^)]*)\)/);
     const sourceClip=match&&[...root.querySelectorAll("clipPath")].find(n=>n.id===match[1]);
     const bounds=sourceClip?.querySelector("rect");
     if(bounds){
