@@ -133,8 +133,22 @@
           "P08"
         ],
         "truckShare": 0.05,
-        "trafficModelStatus": "unverified",
-        "trafficModelNote": "Traffic intensity proportions for Kaple are not calibrated; no verified origin-destination counts. Northwest narrow approach P07/P08 prohibits trucks."
+        "trafficModelStatus": "working-ratio",
+        "trafficModelNote": "Kaple: 59% sever-jih přímý směr (T05,T07), 35% sever/jih↔východ (T01,T03,T04,T08), 5% sever/jih↔severozápad (T06,T09,T10,T12), 1% východ↔severozápad (T02,T11). V rámci každé skupiny pracovní rovnoměrné rozdělení; nikoli jednotlivě změřené intenzity.",
+        "trafficWeights": {
+          "T01": 875,
+          "T02": 50,
+          "T03": 875,
+          "T04": 875,
+          "T05": 2950,
+          "T06": 125,
+          "T07": 2950,
+          "T08": 875,
+          "T09": 125,
+          "T10": 125,
+          "T11": 50,
+          "T12": 125
+        }
       }
     }
   ]
