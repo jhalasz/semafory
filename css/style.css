@@ -28,3 +28,10 @@ input[type=file]{display:block;width:100%;margin:.7rem 0}button{border:1px solid
 }
 
 .movement-list{display:flex;flex-direction:column;gap:8px;margin-top:10px}.movement-item{display:flex;flex-direction:column;gap:6px;border-bottom:1px solid #45536a;padding:7px 0}.movement-item.selected{border-left:3px solid #fbbf24;padding-left:6px}.movement-field{font-size:12px;display:flex;flex-direction:column;gap:4px}.movement-field select{max-width:100%;padding:6px;color:inherit;background:#28384c;border:1px solid #68788c;border-radius:4px}
+
+/* Universal interactive map zoom (builder 2.6.3). */
+.map-zoom-controls{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;font-size:.8rem;color:#c5d4e8}
+.map-zoom-controls input{width:145px;accent-color:#60a5fa}
+.map-zoom-controls output{min-width:3.5rem;text-align:right;font-variant-numeric:tabular-nums}
+.map-zoom-controls button{padding:.3rem .5rem;font-size:.75rem}
+@media(max-width:850px){.workspace-head{flex-wrap:wrap}.map-zoom-controls{order:3;width:100%}}
