@@ -35,6 +35,42 @@ function category(e){
  if(["#00b050","#22c55e"].includes(c))return "signals";
  return "photo";
 }
+function isWhitePageBackground(node,page){
+ if(node.localName!=="rect")return false;
+ const num=name=>Number(node.getAttribute(name));
+ const x=num("x")||0,y=num("y")||0,w=num("width"),h=num("height");
+ if(![x,y,w,h].every(Number.isFinite)||w<=0||h<=0)return false;
+ const fill=(node.getAttribute("fill")||(node.getAttribute("style")||"").match(/fill:\s*([^;]+)/)?.[1]||"").replace(/\s+/g,"").toLowerCase();
+ const white=["#fff","#ffffff","white","rgb(255,255,255)"].includes(fill);
+ const tol=Math.max(page.width,page.height)*.002;
+ return white&&Math.abs(x-page.x)<=tol&&Math.abs(y-page.y)<=tol&&Math.abs(w-page.width)<=tol&&Math.abs(h-page.height)<=tol;
+}
+function fitToImportedContent(page){
+ const ignored=[...scene.querySelectorAll("[data-semafory-crop-ignore='1']")];
+ const previous=ignored.map(node=>node.getAttribute("display"));
+ for(const node of ignored)node.setAttribute("display","none");
+ try{
+  const boxes=[];
+  for(const [key] of keys){
+   const group=el(key);
+   if(!group.childElementCount)continue;
+   const b=group.getBBox();
+   if(b.width>0&&b.height>0&&[b.x,b.y,b.width,b.height].every(Number.isFinite))boxes.push(b);
+  }
+  if(!boxes.length)return false;
+  const minX=Math.min(...boxes.map(b=>b.x)),minY=Math.min(...boxes.map(b=>b.y));
+  const maxX=Math.max(...boxes.map(b=>b.x+b.width)),maxY=Math.max(...boxes.map(b=>b.y+b.height));
+  const width=maxX-minX,height=maxY-minY;
+  if(!(width>0&&height>0))return false;
+  const pad=Math.max(width,height)*.02;
+  const box=[minX-pad,minY-pad,width+2*pad,height+2*pad];
+  scene.setAttribute("viewBox",box.join(" "));
+  scene.style.aspectRatio=box[2]+"/"+box[3];
+  return true;
+ }finally{
+  ignored.forEach((node,i)=>previous[i]===null?node.removeAttribute("display"):node.setAttribute("display",previous[i]));
+ }
+}
 function svgImport(xml,name){
  const doc=new DOMParser().parseFromString(xml,"image/svg+xml");
  if(doc.querySelector("parsererror")||doc.documentElement.localName!=="svg")throw Error("Neplatné SVG");
@@ -45,6 +81,7 @@ function svgImport(xml,name){
  const vb=root.getAttribute("viewBox");const w=parseFloat(root.getAttribute("width"))||1280,h=parseFloat(root.getAttribute("height"))||720;
  scene.setAttribute("viewBox",vb||"0 0 "+w+" "+h);
  const nums=vb?vb.split(/[\s,]+/).map(Number):[0,0,w,h];scene.style.aspectRatio=nums[2]+"/"+nums[3];
+ const page={x:nums[0],y:nums[1],width:nums[2],height:nums[3]};
  const count={};const allowed=["path","image","rect","circle","ellipse","line","polyline","polygon","use","text"];
  function visit(node,parents){
   if(node.localName==="defs"||node.localName==="clipPath")return;
@@ -52,20 +89,17 @@ function svgImport(xml,name){
   if(!allowed.includes(node.localName))return;
   const k=category(node);count[k]=(count[k]||0)+1;let dest=el(k);
   for(const p of parents){const g=document.createElementNS(ns,"g");for(const a of p.attributes)if(["transform","opacity","clip-path"].includes(a.name))g.setAttribute(a.name,a.value);dest.append(g);dest=g;}
-  dest.append(document.importNode(node,true));
+  const imported=document.importNode(node,true);
+  if(isWhitePageBackground(node,page))imported.setAttribute("data-semafory-crop-ignore","1");
+  dest.append(imported);
  }
  for(const child of root.children)visit(child,[]);
- // Fit the scene to the actual embedded photograph, not to an assumed SVG page.
- // PowerPoint may export a slide-sized viewBox with content offset inside it.
- try{
-  const photo=el("photo");
-  const box=photo.getBBox();
-  if(box.width>0&&box.height>0&&[box.x,box.y,box.width,box.height].every(Number.isFinite)){
-   const pad=Math.max(box.width,box.height)*.04;
-   scene.setAttribute("viewBox",[box.x-pad,box.y-pad,box.width+2*pad,box.height+2*pad].join(" "));
-   scene.style.aspectRatio=(box.width+2*pad)+"/"+(box.height+2*pad);
-  }
- }catch(err){console.warn("Nelze vypočítat rozměry fotografie",err);}
+ // General rule for every intersection: trim unused SVG page area.
+ // A slide-sized white PowerPoint background is kept for rendering but ignored
+ // when calculating the visible workspace. All real imported layers participate
+ // in the bounds, so markings or trajectories outside the photo are never cut off.
+ try{fitToImportedContent(page);}
+ catch(err){console.warn("Nelze automaticky oříznout prázdnou plochu SVG",err);}
  sourceSvg=xml;
  fullViewBox=scene.getAttribute("viewBox");
  document.getElementById("show-full-map").disabled=false;
