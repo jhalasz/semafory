@@ -3,7 +3,7 @@ import {createSignalController} from "./signal-controller.js?v=2.4.3";
 import {projectStore} from "./project-store.js?v=1.7";
 const ns="http://www.w3.org/2000/svg",svg=document.getElementById("scene"),$=id=>document.getElementById(id);
 const map=$("map"),photoMap=$("photo-map"),markings=$("markings"),carsLayer=$("vehicles"),lights=$("lights");
-const APP_VERSION="2.6.14";
+const APP_VERSION="2.6.15";
 const FIXED_DT=0.01;let accumulator=0,dayElapsed=0,spawnBudget=0;let collisionReport=null,selectedCarId=null;let signalsEnabled=false,collisionLocked=false,tracks=[],cars=[],passed=0,routeStats=new Map(),running=false,clock=0,spawnClock=0,last=0,phase=0,nextId=1,signals=[],controller=null,signalLocations=[];let activeProject=null,activeGameConfig={},projectCatalog=[];
 function svgEl(name,attrs={}){const e=document.createElementNS(ns,name);for(const [k,v]of Object.entries(attrs))e.setAttribute(k,String(v));return e;}
 function category(el){const style=el.getAttribute("style")||"";const stroke=(el.getAttribute("stroke")||(style.match(/stroke:\s*([^;]+)/)||[])[1]||"").toLowerCase(),fill=(el.getAttribute("fill")||(style.match(/fill:\s*([^;]+)/)||[])[1]||"").toLowerCase();const c=stroke&&stroke!=="none"?stroke:fill;if(["#fff","#ffffff"].includes(c))return"markings";if(["#61cbf4","#37b5ed"].includes(c))return"lane";if(["#ffc000","#f59e0b"].includes(c))return"route";if(["#7030a0","#a855f7"].includes(c))return"boundary";if(["#00b050","#22c55e"].includes(c)||stroke==="#042433"&&fill==="#00b050")return"signal";return"map";}
@@ -512,6 +512,22 @@ function turnStages(track,spec){
  stagedTurnCache.set(key,stages);
  return stages;
 }
+// Right-of-way does not authorize driving into an occupied conflict point.
+// This symmetric safety gate protects vehicles which entered earlier, even
+// when the approaching movement would ordinarily have priority.
+function occupiedJunctionGate(car,snapshot){
+ if(car.s>car.track.stopAt+.1)return null;
+ for(const other of snapshot){
+  if(other.id===car.id||other.track===car.track||
+     other.track.entryLane===car.track.entryLane)continue;
+  if(other.s<other.track.stopAt+other.length/2)continue;
+  const conflict=priorityRouteConflict(car,other);
+  if(!conflict)continue;
+  if(other.s-other.length/2>conflict.lastPriorityPosition+car.length/2+8)continue;
+  return {gap:Math.max(0,car.track.stopAt-car.s),v:0,blockingVehicle:other.id};
+ }
+ return null;
+}
 function priorityGate(car,snapshot,trace=null){
  const stages=turnStages(car.track,car.spec);
  const next=stages.find(stage=>car.s<=stage.stop+.1);
@@ -686,7 +702,7 @@ function spawn(){
  const forbidden=new Set(activeGameConfig.truckForbiddenLanes||[]);
  const truckRouteAllowed=!forbidden.has(t.entryLane)&&!forbidden.has(t.exitLane);
  const truck=truckRouteAllowed&&Math.random()<Math.max(0,Math.min(1,Number(movementTruckShare??activeGameConfig.truckShare??.05))),spec=truck?VEHICLE_TYPES.truck:VEHICLE_TYPES.car;const g=svgEl("g"),body=svgEl("rect",{x:-spec.length/2,y:-spec.width/2,width:spec.length,height:spec.width,rx:2,fill:truck?"#f0c673":["#fff5bf","#e14e5a","#61b9ef","#9ee08e"][Math.floor(Math.random()*4)],stroke:"#172536","stroke-width":1.5});
- g.append(body);g.append(svgEl("rect",{x:-spec.length/2-6,y:-spec.width/2-8,width:spec.length+12,height:spec.width+16,fill:"transparent","pointer-events":"all"}));carsLayer.append(g);const car={id:nextId++,track:t,s:0,v:spec.cruise,length:spec.length,spec,el:g,
+ g.append(body);g.append(svgEl("rect",{x:-spec.length/2-6,y:-spec.width/2-8,width:spec.length+12,height:spec.width+16,fill:"transparent","pointer-events":"all"}));carsLayer.append(g);const car={id:nextId++,track:t,s:0,v:0,length:spec.length,spec,el:g,
   enteredAt:clock,history:[],lastTelemetryTick:-1,lastTelemetryState:""};
  car.el.style.cursor="pointer";car.el.addEventListener("click",e=>{e.stopPropagation();selectedCarId=car.id;updateInspector();});
  cars.push(car);recordTelemetry(car,"spawn",null,null,true);return true;
@@ -920,6 +936,11 @@ function animate(now){
   const gate=priorityGate(car,snapshots,gateTrace);
   if(inspect&&gateTrace)Object.assign(inspect,gateTrace);
   if(gate&&(!obstacle||gate.gap<obstacle.gap)){obstacle=gate;if(inspect)obstacleSource={rule:"Dávání přednosti",...(inspect.blocker||{})};}
+  const occupied=occupiedJunctionGate(car,snapshots);
+  if(occupied&&(!obstacle||occupied.gap<obstacle.gap)){
+   obstacle=occupied;
+   if(inspect)obstacleSource={rule:"Obsazená konfliktní plocha křižovatky",id:occupied.blockingVehicle};
+  }
    // A red signal acts like a stationary lead vehicle at the stop line.
   if(!lightIsGreen(car.track.signal)&&car.s<car.track.stopAt){
    const gap=car.track.stopAt-car.s;
