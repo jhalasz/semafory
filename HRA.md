@@ -1,8 +1,8 @@
 # Semafory – veřejná hra a dopravní simulace
 
-**Aktuální verze veřejné hry: 2.6.13** · [Otevřít hru](https://jhalasz.github.io/semafory/hra.html)
+**Aktuální verze veřejné hry: 2.6.14** · [Otevřít hru](https://jhalasz.github.io/semafory/hra.html)
 
-## Verze 2.6.13 – více křižovatek
+## Verze 2.6.14 – více křižovatek
 
 Hra už není pevně svázaná s jediným souborem Massag 4. V horním ovládacím panelu je výběr **Křižovatka** a hra umí načíst dva druhy projektů:
 
@@ -17,7 +17,7 @@ V katalogu je nyní zveřejněn **Massag 4**. Další křižovatku lze před zve
 
 Simulační jádro je společné pro všechny křižovatky. Do projektu nebo jeho herní konfigurace patří geometrie, směry, průjezdy, semafory, priority, dopravní intenzity a specifické fyzické návaznosti.
 
-Verze 2.6.13 odstranila z herního jádra dřívější pevné vazby na Massag:
+Verze 2.6.14 odstranila z herního jádra dřívější pevné vazby na Massag:
 
 - hra už nenačítá natvrdo `projects/massag-4.json`;
 - sdílený příjezd Opavské není rozpoznáván přes pevná ID `T03/P01`;
@@ -77,59 +77,63 @@ Nový místní projekt bez zvláštní herní konfigurace lze také otevřít. P
 
 ## Další směr
 
-Dalším krokem je přiřazení křižovatek k herním **levelům**. Výběr křižovatky ve verzi 2.6.13 je technický základ: level později určí nejen projekt křižovatky, ale i režim řízení, cíle a obtížnost.
+Dalším krokem je přiřazení křižovatek k herním **levelům**. Výběr křižovatky ve verzi 2.6.14 je technický základ: level později určí nejen projekt křižovatky, ale i režim řízení, cíle a obtížnost.
 
 Dokumentace přípravy geometrie je v [BUILDER.md](BUILDER.md).
 
 ## Historie
 
 - **2.5.46:** poslední verze pevně načítající Massag 4.
-- **2.6.13:** výběr více křižovatek, lokální projekty z Builderu, katalog zveřejněných projektů a přesun Massag-specifických parametrů z univerzálního jádra do dat.
+- **2.6.14:** výběr více křižovatek, lokální projekty z Builderu, katalog zveřejněných projektů a přesun Massag-specifických parametrů z univerzálního jádra do dat.
 
-## 2.6.13 – rozměry a intenzity
+## 2.6.14 – rozměry a intenzity
 
 - Osobní a nákladní vozidla mají o 20 % menší fyzické a vizuální rozměry; kolizní logika používá tyto nové rozměry.
 - Massag: rozdílné podíly nákladních vozidel podle šesti směrů z průzkumu duben 2018; počty a podíly jsou v katalogu projektů.
 - Pracovní poměr 59 : 35 : 5 : 1 pro Novou cestu, Čs. armády a Radotínskou zdokumentován samostatně v DOPRAVA.md; na nesouvisející křižovatku Kaple se neaplikuje.
 
-## 2.6.13 – ořez mapy
+## 2.6.14 – ořez mapy
 
 Převzat výpočet výřezu z Builderu: naimportované vrstvy se změří bez bílého exportního pozadí a přidá se 2% okraj. Výřez už neurčují pouze rozměry fotomapy. Bez změny geometrie tras a pravidel dopravy.
 
-## 2.6.13
+## 2.6.14
 
 - Oprava přetékajícího desktopového horního panelu, který roztahoval stránku a posouval křižovatku doprava.
 - Pokud je v projektu uložené `viewport.viewBox`, Player použije přesně hranice výřezu z Builderu; starší exporty nadále používají automatický odhad.
 - Osobní vozidlo 22,4 × 9 jednotek, nákladní 40 × 13 jednotek (grafika i kolize).
 
-## 2.6.13 – maska fotomapy
+## 2.6.14 – maska fotomapy
 
 Player znovu aplikuje ořezovou masku původního SVG (`clipPath`) na samostatně vykreslovanou fotomapu. Tím zabrání zobrazování částí fotografie, které Builder správně ořezává.
 
-## 2.6.13 – ovládání semaforů u mapy
+## 2.6.14 – ovládání semaforů u mapy
 
 Výška herního rámečku se odvozuje od skutečného poměru stran výřezu, ne od pevné výšky okna. Tlačítka semaforů ve spodní části proto následují fotografii místo původní prázdné plochy.
 
-## 2.6.13 – zákaz nákladních vozidel na úzkém rameni Kaple
+## 2.6.14 – zákaz nákladních vozidel na úzkém rameni Kaple
 
 Univerzální generátor podporuje `game.truckForbiddenLanes`. Pro Kapli jsou v katalogu zakázané P07/P08: nákladní vozidlo se nesmí vygenerovat na trase, která do některého z těchto pruhů přijíždí nebo z něj odjíždí. Rozdělení dopravy Kaple dosud není doložené dopravním průzkumem a prozatím zůstává rovnoměrné mezi dostupnými trasami; poměr 59:35:5:1 pro jinou křižovatku sem nebyl nesprávně zkopírován.
 
-## 2.6.13 – Kaple: poměry dopravy
+## 2.6.14 – Kaple: poměry dopravy
 
 Do `projects/index.json` byl zanesen pracovní poměr 59 : 35 : 5 : 1 pro Kapli. 59 % sever–jih T05/T07, 35 % sever/jih–východ T01/T03/T04/T08, 5 % sever/jih–severozápad T06/T09/T10/T12, 1 % východ–severozápad T02/T11. Uvnitř skupin jsou proudy rovnoměrně rozděleny, protože samostatné intenzity pro jednotlivé směry nemáme. Zákaz nákladních na P07/P08 zachován.
 
-## 2.6.13 – oprava významu podílů Kaple
+## 2.6.14 – oprava významu podílů Kaple
 
 Hodnoty 59/35/5/1 jsou podíly dopravy příjezdových větví, nikoli odbočovacích tras. Nová cesta 59 %, Čs. armády 35 %, Radlická 5 %, tovární vjezd Massag 1 % (dosud neaktivní). Generátor nyní používá `game.entryTrafficWeights`, vybere nejprve příjezd a pak pohyb rovnoměrně mezi jeho potvrzenými trasami. Aktivní podíly se normalizují ze 99. Mapování ulic na P04/P06/P01/P07 je pracovní a vyžaduje ověření.
 
-## 2.6.13 – mobilní zobrazení a skutečný výřez
+## 2.6.14 – mobilní zobrazení a skutečný výřez
 
 Player vypočítává viditelnou plochu z transformované ořezové masky (`clipPath`) fotomapy. Neviditelná část původního SVG už nezvětšuje rámeček a nevytváří prázdné místo pod mapou. Při přepnutí telefonu naležato je mapa jako první, před ovládacím panelem, a její velikost se přizpůsobí výšce displeje.
 
-## 2.6.13 – pořadí ovládání na mobilu
+## 2.6.14 – pořadí ovládání na mobilu
 
 Na mobilu jsou ovládací tlačítka bezprostředně pod křižovatkou, statistika až pod nimi. Popisy tras se berou z herní konfigurace každé křižovatky, nikoli z pevného seznamu Massagu. U Kaple se zatím zobrazují identifikátory příjezdového a výjezdového pruhu.
 
-## 2.6.13 – mobilní pořadí prvků
+## 2.6.14 – mobilní pořadí prvků
 
 Na telefonu jsou pod mapou nejprve Spustit, Pozastavit a Nová simulace; ostatní ovládání následuje a statistika je až za celým ovládacím panelem. Upraveno pomocí explicitního `order`, protože předchozí mobilní flex pořadí ponechávalo statistiku před ovládáním.
+
+## 2.6.14 – zmenšení aut
+
+Osobní auta 15,68 × 6,3 a nákladní 28 × 9,1 SVG jednotek (o 30 % méně než 2.6.13). Změna platí pro vykreslení i fyzickou kolizní geometrii, bez zásahu do intenzit Kaple a pravidel nákladní dopravy.
