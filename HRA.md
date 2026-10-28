@@ -138,6 +138,10 @@ Na telefonu jsou pod mapou nejprve Spustit, Pozastavit a Nová simulace; ostatn�
 
 Osobní auta 15,68 × 6,3 a nákladní 28 × 9,1 SVG jednotek (o 30 % méně než 2.6.13). Změna platí pro vykreslení i fyzickou kolizní geometrii, bez zásahu do intenzit Kaple a pravidel nákladní dopravy.
 
-## 2.6.16 – protijedoucí odbočující vlevo
+## 2.6.17 – protijedoucí odbočující vlevo
 
 Dva protijedoucí proudy, které oba odbočují vlevo, nemají vůči sobě vzájemnou přednost: `opposedLeftTurns` je vyřadí z konzervativního čekacího místa a z blokace `occupiedJunctionGate`. Zůstává zachována samostatná detekce fyzických kolizí; případný geometrický překryv tras vyžaduje úpravu trajektorie v Builderu.
+
+## 2.6.17 – čekání před skutečným konfliktem
+
+Zpřesněna obecná predikce přednosti: stojící vozidlo, které dosud nevjelo za hranici křižovatky, si nesmí hypoteticky rezervovat celou budoucí konfliktní trasu. Jeho skutečný příjezd je nadále kontrolován časovou predikcí. Čekací místo před kolizní pozicí se dál odvozuje geometricky z obrysů vozidel a tras. Detekce srážek zůstala zapnutá.
