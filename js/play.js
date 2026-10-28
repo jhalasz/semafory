@@ -3,7 +3,7 @@ import {createSignalController} from "./signal-controller.js?v=2.4.3";
 import {projectStore} from "./project-store.js?v=1.7";
 const ns="http://www.w3.org/2000/svg",svg=document.getElementById("scene"),$=id=>document.getElementById(id);
 const map=$("map"),photoMap=$("photo-map"),markings=$("markings"),carsLayer=$("vehicles"),lights=$("lights");
-const APP_VERSION="2.6.10";
+const APP_VERSION="2.6.11";
 const FIXED_DT=0.01;let accumulator=0,dayElapsed=0,spawnBudget=0;let collisionReport=null,selectedCarId=null;let signalsEnabled=false,collisionLocked=false,tracks=[],cars=[],passed=0,routeStats=new Map(),running=false,clock=0,spawnClock=0,last=0,phase=0,nextId=1,signals=[],controller=null,signalLocations=[];let activeProject=null,activeGameConfig={},projectCatalog=[];
 function svgEl(name,attrs={}){const e=document.createElementNS(ns,name);for(const [k,v]of Object.entries(attrs))e.setAttribute(k,String(v));return e;}
 function category(el){const style=el.getAttribute("style")||"";const stroke=(el.getAttribute("stroke")||(style.match(/stroke:\s*([^;]+)/)||[])[1]||"").toLowerCase(),fill=(el.getAttribute("fill")||(style.match(/fill:\s*([^;]+)/)||[])[1]||"").toLowerCase();const c=stroke&&stroke!=="none"?stroke:fill;if(["#fff","#ffffff"].includes(c))return"markings";if(["#61cbf4","#37b5ed"].includes(c))return"lane";if(["#ffc000","#f59e0b"].includes(c))return"route";if(["#7030a0","#a855f7"].includes(c))return"boundary";if(["#00b050","#22c55e"].includes(c)||stroke==="#042433"&&fill==="#00b050")return"signal";return"map";}
@@ -142,6 +142,18 @@ function readSvg(xml){
      mask.setAttribute("transform",`matrix(${[clipMatrix.a,clipMatrix.b,clipMatrix.c,clipMatrix.d,clipMatrix.e,clipMatrix.f].join(" ")})`);
      clip.append(mask);$("defs").append(clip);
      photoMap.setAttribute("clip-path",`url(#${clipId})`);
+     // Store the *visible clipped photo rectangle*, not the full embedded
+     // photograph. The saved Builder viewport may include hidden content.
+     const x=Number(bounds.getAttribute("x"))||0,y=Number(bounds.getAttribute("y"))||0;
+     const w=Number(bounds.getAttribute("width")),h=Number(bounds.getAttribute("height"));
+     if(w>0&&h>0){
+      const corners=[[x,y],[x+w,y],[x,y+h],[x+w,y+h]]
+       .map(([cx,cy])=>new DOMPoint(cx,cy).matrixTransform(clipMatrix));
+      const left=Math.min(...corners.map(p=>p.x)),top=Math.min(...corners.map(p=>p.y));
+      const right=Math.max(...corners.map(p=>p.x)),bottom=Math.max(...corners.map(p=>p.y));
+      if([left,top,right,bottom].every(Number.isFinite))
+       svg.dataset.photoCrop=[left,top,right-left,bottom-top].join(" ");
+     }
     }
    }
    photoMap.append(rect);
@@ -967,6 +979,8 @@ function clearProjectScene(){
  cars=[];selectedCarId=null;tracks=[];signals=[];signalLocations=[];routeStats=new Map();
  collisionLocked=false;collisionReport=null;clock=0;accumulator=0;dayElapsed=0;spawnBudget=0;spawnClock=0;passed=0;phase=0;nextId=1;
  for(const id of ["defs","map","photo-map","markings","native-map","vehicles","lights"])$(id)?.replaceChildren();
+ delete svg.dataset.photoCrop;
+ photoMap.removeAttribute("clip-path");
  signalVisuals.clear();priorityConflictCache.clear();innerWaitCache.clear();stagedTurnCache.clear();
  normalController=null;unrestrictedController=null;controller=null;activeSignalPlan=null;freeSignals=new Set();yieldRules=[];freeTraffic={};
  $("diagnostics").hidden=true;$("vehicle-inspector").hidden=true;
@@ -1006,6 +1020,19 @@ async function loadIntersection(source,{initial=false}={}){
    svg.style.aspectRatio=numbers[2]+"/"+numbers[3];
    svg.parentElement.style.setProperty("--map-aspect",numbers[2]+"/"+numbers[3]);
    svg.parentElement.style.setProperty("--map-ratio",String(numbers[2]/numbers[3]));
+  }
+ }
+ // Prefer the actual rendered photo clip to the saved Builder viewport:
+ // unrendered PowerPoint objects can expand the latter vertically.
+ if(svg.dataset.photoCrop){
+  const [x,y,w,h]=svg.dataset.photoCrop.split(" ").map(Number);
+  if(w>0&&h>0){
+   const pad=Math.max(w,h)*.02;
+   const box=[x-pad,y-pad,w+2*pad,h+2*pad];
+   svg.setAttribute("viewBox",box.join(" "));
+   svg.style.aspectRatio=box[2]+"/"+box[3];
+   svg.parentElement.style.setProperty("--map-aspect",box[2]+"/"+box[3]);
+   svg.parentElement.style.setProperty("--map-ratio",String(box[2]/box[3]));
   }
  }
  tracks=(data.movements?.movements||[]).filter(m=>m.confirmed).map(m=>makeTrack(network,m)).filter(Boolean);
