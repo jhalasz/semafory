@@ -120,6 +120,14 @@
             "T05": 81,
             "T06": 55
           }
+        },
+        "movementLabels": {
+          "T01": "Dukelská → Nová cesta",
+          "T02": "Nová cesta → Dukelská",
+          "T03": "Opavská → Nová cesta",
+          "T04": "Nová cesta → Opavská",
+          "T05": "Dukelská → Opavská",
+          "T06": "Opavská → Dukelská"
         }
       }
     },
