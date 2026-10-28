@@ -137,3 +137,7 @@ Na telefonu jsou pod mapou nejprve Spustit, Pozastavit a Nová simulace; ostatn�
 ## 2.6.14 – zmenšení aut
 
 Osobní auta 15,68 × 6,3 a nákladní 28 × 9,1 SVG jednotek (o 30 % méně než 2.6.13). Změna platí pro vykreslení i fyzickou kolizní geometrii, bez zásahu do intenzit Kaple a pravidel nákladní dopravy.
+
+## 2.6.16 – protijedoucí odbočující vlevo
+
+Dva protijedoucí proudy, které oba odbočují vlevo, nemají vůči sobě vzájemnou přednost: `opposedLeftTurns` je vyřadí z konzervativního čekacího místa a z blokace `occupiedJunctionGate`. Zůstává zachována samostatná detekce fyzických kolizí; případný geometrický překryv tras vyžaduje úpravu trajektorie v Builderu.
