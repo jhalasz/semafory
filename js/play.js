@@ -3,7 +3,7 @@ import {createSignalController} from "./signal-controller.js?v=2.4.3";
 import {projectStore} from "./project-store.js?v=1.7";
 const ns="http://www.w3.org/2000/svg",svg=document.getElementById("scene"),$=id=>document.getElementById(id);
 const map=$("map"),photoMap=$("photo-map"),markings=$("markings"),carsLayer=$("vehicles"),lights=$("lights");
-const APP_VERSION="2.6.18";
+const APP_VERSION="2.6.19";
 const FIXED_DT=0.01;let accumulator=0,dayElapsed=0,spawnBudget=0;let collisionReport=null,selectedCarId=null;let signalsEnabled=false,collisionLocked=false,tracks=[],cars=[],passed=0,routeStats=new Map(),running=false,clock=0,spawnClock=0,last=0,phase=0,nextId=1,signals=[],controller=null,signalLocations=[];let activeProject=null,activeGameConfig={},projectCatalog=[];
 function svgEl(name,attrs={}){const e=document.createElementNS(ns,name);for(const [k,v]of Object.entries(attrs))e.setAttribute(k,String(v));return e;}
 function category(el){const style=el.getAttribute("style")||"";const stroke=(el.getAttribute("stroke")||(style.match(/stroke:\s*([^;]+)/)||[])[1]||"").toLowerCase(),fill=(el.getAttribute("fill")||(style.match(/fill:\s*([^;]+)/)||[])[1]||"").toLowerCase();const c=stroke&&stroke!=="none"?stroke:fill;if(["#fff","#ffffff"].includes(c))return"markings";if(["#61cbf4","#37b5ed"].includes(c))return"lane";if(["#ffc000","#f59e0b"].includes(c))return"route";if(["#7030a0","#a855f7"].includes(c))return"boundary";if(["#00b050","#22c55e"].includes(c)||stroke==="#042433"&&fill==="#00b050")return"signal";return"map";}
@@ -471,6 +471,61 @@ function priorityApplies(a,b){
     leftTurn(a)&&opposingTracks(a,b)&&!leftTurn(b))return true;
  return yieldRules.some(rule=>rule.from===a.id&&rule.to.includes(b.id));
 }
+// Signalised ordinary green: left turns yield to oncoming through/right
+// traffic at each geometrically separate body-envelope conflict. This is
+// independent of intersection IDs, streets and SVG scale.
+const signalLeftStageCache=new Map();
+function signalLeftStages(track,spec){
+ const key=[track.id,spec.length,spec.width].join("|");
+ if(signalLeftStageCache.has(key))return signalLeftStageCache.get(key);
+ const conflicts=[];
+ const own={track,spec,length:spec.length};
+ const begin=track.stopAt;
+ const end=Math.min(track.length,track.exitStart+spec.length+25);
+ for(const other of tracks){
+  if(!opposingTracks(track,other)||leftTurn(other))continue;
+  // Use the largest actual vehicle category in this movement: yielding
+  // positions must also be safe when a truck is oncoming.
+  const os=VEHICLE_TYPES.truck,ghost={track:other,spec:os,length:os.length};
+  const intervals=[];
+  let opened=null,last=null;
+  for(let p=begin;p<=end+2;p+=2){
+   const ownFoot=predictedFootprint(own,Math.min(p,end),1);
+   let collision=false;
+   for(let q=other.stopAt;q<=Math.min(other.length,other.exitStart+os.length+30);q+=3){
+    if(overlaps(ownFoot,predictedFootprint(ghost,q,1))){collision=true;break;}
+   }
+   if(collision){if(opened===null)opened=p;last=p;}
+   else if(opened!==null){intervals.push({from:opened,to:last+2,route:other.id});opened=null;}
+  }
+  if(opened!==null)intervals.push({from:opened,to:last+2,route:other.id});
+  conflicts.push(...intervals);
+ }
+ conflicts.sort((a,b)=>a.from-b.from);
+ // Merge overlaps but do not merge two spatially independent hazards:
+ // the complete vehicle may wait between them if its physical footprint fits.
+ const zones=[];
+ for(const item of conflicts){
+  const last=zones[zones.length-1];
+  if(last&&item.from<=last.to+2){last.to=Math.max(last.to,item.to);last.routes.add(item.route);}
+  else zones.push({from:item.from,to:item.to,routes:new Set([item.route])});
+ }
+ const stages=[];
+ for(let i=0;i<zones.length;i++){
+  const zone=zones[i];
+  const stop=Math.max(begin,zone.from-2);
+  if(i>0&&stop-zones[i-1].to<spec.length+4){
+   // No safe full-body waiting island: merge into earlier decision.
+   const prev=stages[stages.length-1];
+   prev.end=Math.max(prev.end,zone.to+2);
+   for(const id of zone.routes)prev.routes.add(id);
+   continue;
+  }
+  stages.push({stop,end:zone.to+2,routes:new Set(zone.routes)});
+ }
+ signalLeftStageCache.set(key,stages);
+ return stages;
+}
 // Compute two decision gates only when there is a physically empty waiting
 // area BETWEEN distinct priority conflicts. The entire vehicle envelope
 // must fit, including its rear; no route IDs are hardcoded.
@@ -536,13 +591,15 @@ function occupiedJunctionGate(car,snapshot){
  return null;
 }
 function priorityGate(car,snapshot,trace=null){
- const stages=turnStages(car.track,car.spec);
+ const signalledLeft=signalsEnabled&&leftTurn(car.track);
+ const stages=signalledLeft?signalLeftStages(car.track,car.spec):turnStages(car.track,car.spec);
  const next=stages.find(stage=>car.s<=stage.stop+.1);
  if(!next){if(trace)trace.gateStatus="Manévr dokončuje – všechna rozhodnutí provedena";return null;}
  const stop=next.stop,end=next.end;
  if(trace){trace.waitAt=+stop.toFixed(2);trace.stage=stages.indexOf(next)+1;trace.stages=stages.length;}
  const priority=snapshot.filter(other=>{
-  if(other.id===car.id||!priorityApplies(car.track,other.track))return false;
+  if(other.id===car.id||!priorityApplies(car.track,other.track)||
+     (signalledLeft&&!next.routes.has(other.track.id)))return false;
   // Ignore conflicts that are wholly outside this decision segment.
   const model={track:car.track,spec:car.spec,length:car.length};
   const tester={track:other.track,spec:other.spec,length:other.length};
@@ -956,7 +1013,9 @@ function animate(now){
   const gate=priorityGate(car,snapshots,gateTrace);
   if(inspect&&gateTrace)Object.assign(inspect,gateTrace);
   if(gate&&(!obstacle||gate.gap<obstacle.gap)){obstacle=gate;if(inspect)obstacleSource={rule:"Dávání přednosti",...(inspect.blocker||{})};}
-  const occupied=occupiedJunctionGate(car,snapshots);
+  // The generic entry-wide occupancy veto must not override the staged
+  // geometric waiting positions of a signalled left turn.
+  const occupied=signalsEnabled&&leftTurn(car.track)?null:occupiedJunctionGate(car,snapshots);
   if(occupied&&(!obstacle||occupied.gap<obstacle.gap)){
    obstacle=occupied;
    if(inspect)obstacleSource={rule:"Obsazená konfliktní plocha křižovatky",id:occupied.blockingVehicle};
