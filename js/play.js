@@ -3,7 +3,7 @@ import {createSignalController} from "./signal-controller.js?v=2.4.3";
 import {projectStore} from "./project-store.js?v=1.7";
 const ns="http://www.w3.org/2000/svg",svg=document.getElementById("scene"),$=id=>document.getElementById(id);
 const map=$("map"),photoMap=$("photo-map"),markings=$("markings"),carsLayer=$("vehicles"),lights=$("lights");
-const APP_VERSION="2.6.21";
+const APP_VERSION="2.6.22";
 const FIXED_DT=0.01;let accumulator=0,dayElapsed=0,spawnBudget=0;let collisionReport=null,selectedCarId=null;let signalsEnabled=false,collisionLocked=false,tracks=[],cars=[],passed=0,routeStats=new Map(),running=false,clock=0,spawnClock=0,last=0,phase=0,nextId=1,signals=[],controller=null,signalLocations=[];let activeProject=null,activeGameConfig={},projectCatalog=[];
 function svgEl(name,attrs={}){const e=document.createElementNS(ns,name);for(const [k,v]of Object.entries(attrs))e.setAttribute(k,String(v));return e;}
 function category(el){const style=el.getAttribute("style")||"";const stroke=(el.getAttribute("stroke")||(style.match(/stroke:\s*([^;]+)/)||[])[1]||"").toLowerCase(),fill=(el.getAttribute("fill")||(style.match(/fill:\s*([^;]+)/)||[])[1]||"").toLowerCase();const c=stroke&&stroke!=="none"?stroke:fill;if(["#fff","#ffffff"].includes(c))return"markings";if(["#61cbf4","#37b5ed"].includes(c))return"lane";if(["#ffc000","#f59e0b"].includes(c))return"route";if(["#7030a0","#a855f7"].includes(c))return"boundary";if(["#00b050","#22c55e"].includes(c)||stroke==="#042433"&&fill==="#00b050")return"signal";return"map";}
@@ -783,7 +783,15 @@ function sampleTrafficMovement(options=tracks){
   const total=lanes.reduce((sum,v)=>sum+v.weight,0);
   if(total>0){
    let draw=Math.random()*total;
-   for(const v of lanes){draw-=v.weight;if(draw<0)return v.routes[Math.floor(Math.random()*v.routes.length)];}
+   for(const v of lanes){draw-=v.weight;if(draw<0){
+    const shares=activeGameConfig.movementShareByEntry||{};
+    const routeTotal=v.routes.reduce((sum,t)=>sum+Math.max(0,Number(shares[t.id])||0),0);
+    if(routeTotal>0){
+     let turnDraw=Math.random()*routeTotal;
+     for(const route of v.routes){turnDraw-=Math.max(0,Number(shares[route.id])||0);if(turnDraw<0)return route;}
+    }
+    return v.routes[Math.floor(Math.random()*v.routes.length)];
+   }}
    return lanes[lanes.length-1].routes[0];
   }
  }
