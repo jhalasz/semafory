@@ -141,20 +141,34 @@
           "P08"
         ],
         "truckShare": 0.05,
-        "trafficModelStatus": "approach-weights",
-        "trafficModelNote": "59 % Nová cesta (modelově rozděleno mezi P04/P06), 35 % Čs. armády (P01), 5 % Radlická (P07), 1 % vjezd Massag neaktivní. Příjezdové proudy se přepočítají ze součtu 99 aktivních dílů; odbočení v rámci příjezdu zůstává rovnoměrné, není změřeno. Mapování názvů na P01/P04/P06/P07 je pracovní a musí být potvrzeno.",
+        "trafficModelStatus": "approach-and-movement-weights",
+        "trafficModelNote": "Příjezdy: P04 29,5, P06 29,5, P01 17,5, P07 2,5 (součet 79; generátor normalizuje na 100 %). Radotínská P07: T10 60 %, T11 10 %, T12 30 %. Odjezdy P02: T04 49 %, T08 49 %, T11 2 %. Zbylé trasy P04/P06 jsou rovnoměrně rozdělené v rámci zbytkového podílu; P01 zatím po třetinách. Váhy P04/P06 do P02 jsou dopočteny pro deklarovaný poměr odjezdů, nikoliv pro samostatně zadaný celkový objem odjezdů.",
         "entryTrafficWeights": {
           "P04": 29.5,
           "P06": 29.5,
-          "P01": 35,
-          "P07": 5
+          "P01": 17.5,
+          "P07": 2.5
         },
         "inactiveApproaches": [
           {
             "name": "Vjezd Massag",
             "share": 1
           }
-        ]
+        ],
+        "movementShareByEntry": {
+          "T01": 0.3333333333333333,
+          "T02": 0.3333333333333333,
+          "T03": 0.3333333333333333,
+          "T04": 0.2076271186440678,
+          "T05": 0.3961864406779661,
+          "T06": 0.3961864406779661,
+          "T07": 0.3961864406779661,
+          "T08": 0.2076271186440678,
+          "T09": 0.3961864406779661,
+          "T10": 0.6,
+          "T11": 0.1,
+          "T12": 0.3
+        }
       }
     }
   ]
