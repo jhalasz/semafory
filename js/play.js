@@ -3,7 +3,7 @@ import {createSignalController} from "./signal-controller.js?v=2.4.3";
 import {projectStore} from "./project-store.js?v=1.7";
 const ns="http://www.w3.org/2000/svg",svg=document.getElementById("scene"),$=id=>document.getElementById(id);
 const map=$("map"),photoMap=$("photo-map"),markings=$("markings"),carsLayer=$("vehicles"),lights=$("lights");
-const APP_VERSION="2.6.20";
+const APP_VERSION="2.6.21";
 const FIXED_DT=0.01;let accumulator=0,dayElapsed=0,spawnBudget=0;let collisionReport=null,selectedCarId=null;let signalsEnabled=false,collisionLocked=false,tracks=[],cars=[],passed=0,routeStats=new Map(),running=false,clock=0,spawnClock=0,last=0,phase=0,nextId=1,signals=[],controller=null,signalLocations=[];let activeProject=null,activeGameConfig={},projectCatalog=[];
 function svgEl(name,attrs={}){const e=document.createElementNS(ns,name);for(const [k,v]of Object.entries(attrs))e.setAttribute(k,String(v));return e;}
 function category(el){const style=el.getAttribute("style")||"";const stroke=(el.getAttribute("stroke")||(style.match(/stroke:\s*([^;]+)/)||[])[1]||"").toLowerCase(),fill=(el.getAttribute("fill")||(style.match(/fill:\s*([^;]+)/)||[])[1]||"").toLowerCase();const c=stroke&&stroke!=="none"?stroke:fill;if(["#fff","#ffffff"].includes(c))return"markings";if(["#61cbf4","#37b5ed"].includes(c))return"lane";if(["#ffc000","#f59e0b"].includes(c))return"route";if(["#7030a0","#a855f7"].includes(c))return"boundary";if(["#00b050","#22c55e"].includes(c)||stroke==="#042433"&&fill==="#00b050")return"signal";return"map";}
@@ -513,7 +513,30 @@ function signalLeftStages(track,spec){
  const stages=[];
  for(let i=0;i<zones.length;i++){
   const zone=zones[i];
-  const stop=Math.max(begin,zone.from-2);
+  // zone.from is already the first position where the COMPLETE oriented
+  // rectangle (front, rear and corners) overlaps another swept vehicle.
+  // Keep a further longitudinal safety reserve before that first contact.
+  // The center coordinate is only a trajectory parameter, never the
+  // collision criterion.
+  const safetyReserve=Math.max(6,spec.length*.35);
+  let stop=Math.max(begin,zone.from-safetyReserve);
+  // Validate the final resting footprint for every route in this zone.
+  // This protects long trucks on a curved trajectory as well as short cars.
+  for(let attempts=0;attempts<Math.ceil(spec.length+15)&&stop>begin;attempts++){
+   const footprint=predictedFootprint(own,stop,2);
+   let wouldOverlap=false;
+   for(const routeId of zone.routes){
+    const other=tracks.find(t=>t.id===routeId);
+    if(!other)continue;
+    const os=VEHICLE_TYPES.truck,ghost={track:other,spec:os,length:os.length};
+    for(let q=other.stopAt;q<=Math.min(other.length,other.exitStart+os.length+30);q+=2){
+     if(overlaps(footprint,predictedFootprint(ghost,q,2))){wouldOverlap=true;break;}
+    }
+    if(wouldOverlap)break;
+   }
+   if(!wouldOverlap)break;
+   stop=Math.max(begin,stop-1);
+  }
   if(i>0&&stop-zones[i-1].to<spec.length+4){
    // No safe full-body waiting island: merge into earlier decision.
    const prev=stages[stages.length-1];
