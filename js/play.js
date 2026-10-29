@@ -3,7 +3,7 @@ import {createSignalController} from "./signal-controller.js?v=2.4.3";
 import {projectStore} from "./project-store.js?v=1.7";
 const ns="http://www.w3.org/2000/svg",svg=document.getElementById("scene"),$=id=>document.getElementById(id);
 const map=$("map"),photoMap=$("photo-map"),markings=$("markings"),carsLayer=$("vehicles"),lights=$("lights");
-const APP_VERSION="2.6.17";
+const APP_VERSION="2.6.18";
 const FIXED_DT=0.01;let accumulator=0,dayElapsed=0,spawnBudget=0;let collisionReport=null,selectedCarId=null;let signalsEnabled=false,collisionLocked=false,tracks=[],cars=[],passed=0,routeStats=new Map(),running=false,clock=0,spawnClock=0,last=0,phase=0,nextId=1,signals=[],controller=null,signalLocations=[];let activeProject=null,activeGameConfig={},projectCatalog=[];
 function svgEl(name,attrs={}){const e=document.createElementNS(ns,name);for(const [k,v]of Object.entries(attrs))e.setAttribute(k,String(v));return e;}
 function category(el){const style=el.getAttribute("style")||"";const stroke=(el.getAttribute("stroke")||(style.match(/stroke:\s*([^;]+)/)||[])[1]||"").toLowerCase(),fill=(el.getAttribute("fill")||(style.match(/fill:\s*([^;]+)/)||[])[1]||"").toLowerCase();const c=stroke&&stroke!=="none"?stroke:fill;if(["#fff","#ffffff"].includes(c))return"markings";if(["#61cbf4","#37b5ed"].includes(c))return"lane";if(["#ffc000","#f59e0b"].includes(c))return"route";if(["#7030a0","#a855f7"].includes(c))return"boundary";if(["#00b050","#22c55e"].includes(c)||stroke==="#042433"&&fill==="#00b050")return"signal";return"map";}
@@ -900,10 +900,20 @@ function animate(now){
      delta=Math.min(delta,ahead);
     }
    }
-   if(car.track.exitLane===other.track.exitLane&&car.s>=car.track.exitStart&&other.s>=other.track.exitStart){
-    const otherExit=other.s-other.track.exitStart;
-    const ourExit=car.s-car.track.exitStart;
-    if(otherExit>ourExit&&otherExit>-other.length)delta=Math.min(delta,otherExit-ourExit);
+   // Different routes can have different exitStart coordinates. Comparing
+   // their route-relative distances creates a phantom leader and can deadlock
+   // a priority right turn against a yielding left turn. For a common exit,
+   // follow only a vehicle physically ahead in the same aligned corridor.
+   if(car.track!==other.track&&car.track.exitLane===other.track.exitLane&&
+      car.s>=car.track.exitStart&&other.s>=other.track.exitStart){
+    const p=position(car.track,car.s),q=position(other.track,other.s);
+    const a=p.angle*Math.PI/180,b=q.angle*Math.PI/180;
+    const dx=q.x-p.x,dy=q.y-p.y;
+    const ahead=dx*Math.cos(a)+dy*Math.sin(a);
+    const side=Math.abs(-dx*Math.sin(a)+dy*Math.cos(a));
+    const corridor=(car.spec.width+other.spec.width)/2+3;
+    if(Math.cos(a-b)>.85&&ahead>0&&side<corridor)
+     delta=Math.min(delta,ahead);
    }
    const gap=delta-(other.length+car.length)/2;
    if(Number.isFinite(gap)&&(!obstacle||gap<obstacle.gap)){obstacle={gap,v:other.v};if(inspect)obstacleSource={rule:"Následování v jízdním pruhu",id:other.id,route:other.track.id};}
