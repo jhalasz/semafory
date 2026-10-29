@@ -6,7 +6,7 @@ Webová aplikace pro přípravu křižovatek a experimentální simulaci dopravn
 
 | Část | Aktuální verze | Dokumentace | Aplikace |
 | --- | --- | --- | --- |
-| Intersection Builder | **2.6.17** | [BUILDER.md](BUILDER.md) | [Otevřít Builder](https://jhalasz.github.io/semafory/) |
+| Intersection Builder | **2.6.19** | [BUILDER.md](BUILDER.md) | [Otevřít Builder](https://jhalasz.github.io/semafory/) |
 | Veřejná hra | **2.6.17** | [HRA.md](HRA.md) | [Otevřít hru](https://jhalasz.github.io/semafory/hra.html) |
 
 **Builder** připravuje a ukládá projekty křižovatek (SVG, vrstvy, návaznosti a nastavení). **Hra** vykonává dopravní simulaci a ve verzi 2.6.4 umí přepínat mezi zveřejněnými i místními projekty křižovatek. Číslování verzí je oddělené.
