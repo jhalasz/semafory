@@ -1,6 +1,6 @@
 # Semafory – veřejná hra a dopravní simulace
 
-**Aktuální verze veřejné hry: 2.6.14** · [Otevřít hru](https://jhalasz.github.io/semafory/hra.html)
+**Aktuální verze veřejné hry: 2.6.19** · [Otevřít hru](https://jhalasz.github.io/semafory/hra.html)
 
 ## Verze 2.6.14 – více křižovatek
 
@@ -145,3 +145,9 @@ Dva protijedoucí proudy, které oba odbočují vlevo, nemají vůči sobě vzá
 ## 2.6.17 – čekání před skutečným konfliktem
 
 Zpřesněna obecná predikce přednosti: stojící vozidlo, které dosud nevjelo za hranici křižovatky, si nesmí hypoteticky rezervovat celou budoucí konfliktní trasu. Jeho skutečný příjezd je nadále kontrolován časovou predikcí. Čekací místo před kolizní pozicí se dál odvozuje geometricky z obrysů vozidel a tras. Detekce srážek zůstala zapnutá.
+
+## 2.6.19 – postupné řešení kolizí při běžné zelené
+
+Režim **se semafory**, vlevo při běžném zeleném signálu: vůz smí do křižovatky. Přednost dává protijedoucím rovně a doprava, nikoli vzájemně protijedoucím vlevo. Samostatné konfliktní intervaly se odvodí ze skutečných geometrických obrysů vozidel po trasách, nikoli z identifikátorů konkrétní křižovatky. Před prvním konfliktem se čeká na poslední bezpečné pozici; po jeho uvolnění může auto popojet k druhému, pokud se mezi oběma bezpečně vejde celé vozidlo. Bez konfliktu se nezastavuje. Sousední konflikty bez dostatečného mezilehlého prostoru tvoří společnou čekací fázi. Původní generické zadržení už nemůže blokovat celý vjezd těchto levých odbočení. Režim bez semaforů zůstává beze změn.
+
+**Zkouška:** Kaple (protijedoucí rovně, doprava, vlevo) a Massag; vizuální provoz nebyl v prohlížeči nezávisle otestován.
