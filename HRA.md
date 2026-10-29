@@ -1,6 +1,6 @@
 # Semafory – veřejná hra a dopravní simulace
 
-**Aktuální verze veřejné hry: 2.6.20** · [Otevřít hru](https://jhalasz.github.io/semafory/hra.html)
+**Aktuální verze veřejné hry: 2.6.21** · [Otevřít hru](https://jhalasz.github.io/semafory/hra.html)
 
 ## Verze 2.6.14 – více křižovatek
 
@@ -146,12 +146,16 @@ Dva protijedoucí proudy, které oba odbočují vlevo, nemají vůči sobě vzá
 
 Zpřesněna obecná predikce přednosti: stojící vozidlo, které dosud nevjelo za hranici křižovatky, si nesmí hypoteticky rezervovat celou budoucí konfliktní trasu. Jeho skutečný příjezd je nadále kontrolován časovou predikcí. Čekací místo před kolizní pozicí se dál odvozuje geometricky z obrysů vozidel a tras. Detekce srážek zůstala zapnutá.
 
-## 2.6.20 – postupné řešení kolizí při běžné zelené
+## 2.6.21 – postupné řešení kolizí při běžné zelené
 
 Režim **se semafory**, vlevo při běžném zeleném signálu: vůz smí do křižovatky. Přednost dává protijedoucím rovně a doprava, nikoli vzájemně protijedoucím vlevo. Samostatné konfliktní intervaly se odvodí ze skutečných geometrických obrysů vozidel po trasách, nikoli z identifikátorů konkrétní křižovatky. Před prvním konfliktem se čeká na poslední bezpečné pozici; po jeho uvolnění může auto popojet k druhému, pokud se mezi oběma bezpečně vejde celé vozidlo. Bez konfliktu se nezastavuje. Sousední konflikty bez dostatečného mezilehlého prostoru tvoří společnou čekací fázi. Původní generické zadržení už nemůže blokovat celý vjezd těchto levých odbočení. Režim bez semaforů zůstává beze změn.
 
 **Zkouška:** Kaple (protijedoucí rovně, doprava, vlevo) a Massag; vizuální provoz nebyl v prohlížeči nezávisle otestován.
 
-## 2.6.20 – odstranění falešné blokace v konfliktním napojení
+## 2.6.21 – odstranění falešné blokace v konfliktním napojení
 
 Diagnostika 2.6.19 Kaple (00:00:35): vozidlo 11/T06 stojí u vyčkávacího bodu, zatímco 12/T09 stojí u vjezdu; obě trasy ústí do P08. `occupiedJunctionGate` nově rozlišuje, zda se fyzický obrys vozidla skutečně nachází v konfliktním intervalu, nikoli jen někde za hranicí křižovatky. Pokud je konflikt obsazen, zastaví druhé vozidlo před skutečným konfliktem, nikoliv automaticky na hranici křižovatky. Model je obecný, nezávislý na ID pruhů. Zachováno rozlišování běžné zelené a práva přednosti i fyzické kolize. Vizuální test ještě neproběhl.
+
+## 2.6.21 – nekolizní čekací pozice celého vozidla
+
+U levého odbočení při běžné zelené je hranice konfliktu počítána z **celého obdélníkového půdorysu** včetně předku, zadku a rohů vozidla. První kolizní souřadnice na trase není čekací pozicí: čekací pozice je posunuta před konflikt o bezpečnostní rezervu a dále ověřena proti úplnému průjezdu všech protijedoucích tras dané zóny. Platí i pro nákladní auto; kontrola používá i velký obrys protijedoucího nákladního auta. Nenahrazuje fyzickou detekci nehody. Změna dosud není vizuálně ověřena v provozu.
