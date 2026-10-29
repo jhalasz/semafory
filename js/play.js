@@ -600,6 +600,10 @@ function priorityGate(car,snapshot,trace=null){
  const priority=snapshot.filter(other=>{
   if(other.id===car.id||!priorityApplies(car.track,other.track)||
      (signalledLeft&&!next.routes.has(other.track.id)))return false;
+  // On a signalised left turn, the exact swept-envelope zone calculation
+  // already established this pair's geometric conflict. Do not overwrite
+  // that with the older sparse sampling check below.
+  if(signalledLeft)return true;
   // Ignore conflicts that are wholly outside this decision segment.
   const model={track:car.track,spec:car.spec,length:car.length};
   const tester={track:other.track,spec:other.spec,length:other.length};
